@@ -1,0 +1,53 @@
+[workspace]
+name = "skyrim-se-head-tracking"
+version = "0.0.0"
+description = "Head tracking mod for Skyrim Special Edition using CameraUnlock shared library"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+# Update shared cameraunlock-core submodule to latest
+sync = "git submodule update --remote cameraunlock-core"
+
+# Setup CMake build (x64 for Skyrim SE)
+setup = { cmd = """
+    powershell -Command "if (-not (Test-Path 'build')) { cmake -B build -G 'Visual Studio 17 2022' -A x64 } else { Write-Host 'Build directory exists, skipping setup' -ForegroundColor Yellow }"
+""" }
+
+# Bump vendored Ultimate ASI Loader to latest upstream within pinned range.
+# Manual; commit the result. CI does not run this.
+update-deps = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1"
+
+# Build debug configuration
+build = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
+
+# Build release configuration
+build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
+
+# Deploy release build to game directory
+install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
+
+# Remove HeadTracking mod only (keeps modding framework)
+uninstall = "scripts\\uninstall.cmd"
+
+# Clean build artifacts
+clean = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+# Full clean including release output
+clean-all = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }; Write-Host 'All build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+# Package release ZIP
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release"] }
+
+# Automated release workflow
+release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
+
+# Preview changelog for next release
+show-changelog = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/show-changelog.ps1" }
+
+[dependencies]
+# No pixi dependencies - using system CMake and Visual Studio

@@ -1,0 +1,150 @@
+name: Release
+run-name: "Release ${{ github.ref_name }}"
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v(\d+\.\d+\.\d+)$') {
+            Write-Host "::error::Invalid tag format: $tag (expected vX.Y.Z)"
+            exit 1
+          }
+          $version = $Matches[1]
+          Write-Host "Version: $version" -ForegroundColor Green
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Validate version matches manifest.json
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $manifest = Get-Content manifest.json | ConvertFrom-Json
+          if ($manifest.version -ne $version) {
+            Write-Host "::error::Tag version ($version) does not match manifest.json ($($manifest.version))"
+            exit 1
+          }
+          Write-Host "manifest.json version matches: $version" -ForegroundColor Green
+
+      - name: Validate version matches CMakeLists.txt
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $cmakeContent = Get-Content CMakeLists.txt -Raw
+          $escaped = [regex]::Escape($version)
+          if ($cmakeContent -notmatch "project\(SkyrimSEHeadTracking VERSION $escaped") {
+            Write-Host "::error::Tag version ($version) does not match CMakeLists.txt"
+            exit 1
+          }
+          Write-Host "CMakeLists.txt version matches: $version" -ForegroundColor Green
+
+      - name: Configure CMake
+        shell: pwsh
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -A x64
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::CMake configure failed"
+            exit 1
+          }
+
+      - name: Build Release
+        shell: pwsh
+        run: |
+          cmake --build build --config Release
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Release build failed"
+            exit 1
+          }
+
+      - name: Package release
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Packaging failed"
+            exit 1
+          }
+
+      - name: Generate release notes
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          & cameraunlock-core/scripts/generate-release-notes.ps1 `
+            -Version $version `
+            -ArtifactPaths @("src/", "cameraunlock-core/", "scripts/install.cmd", "scripts/uninstall.cmd") `
+            -ProjectName "SkyrimSEHeadTracking"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Release notes generation failed"
+            exit 1
+          }
+
+      - name: Find release ZIPs
+        id: zips
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release/*-installer.zip | Select-Object -First 1
+          $nexus = Get-ChildItem release/*-nexus.zip | Select-Object -First 1
+
+          if (-not $installer) {
+            Write-Host "::error::Installer ZIP not found in release/"
+            exit 1
+          }
+          if (-not $nexus) {
+            Write-Host "::error::Nexus ZIP not found in release/"
+            exit 1
+          }
+
+          "installer=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+          "nexus=$($nexus.FullName)" >> $env:GITHUB_OUTPUT
+          Write-Host "Installer: $($installer.FullName)" -ForegroundColor Green
+          Write-Host "Nexus:     $($nexus.FullName)" -ForegroundColor Green
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "v$version"
+          $installer = "${{ steps.zips.outputs.installer }}"
+          $nexus = "${{ steps.zips.outputs.nexus }}"
+
+          Write-Host "Creating GitHub Release $tag..." -ForegroundColor Cyan
+          gh release create $tag `
+            --title "v$version" `
+            --notes-file release-notes.txt `
+            "$installer" `
+            "$nexus"
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::Failed to create GitHub Release"
+            exit 1
+          }
+
+          Write-Host "GitHub Release created successfully" -ForegroundColor Green
