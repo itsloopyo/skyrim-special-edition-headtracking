@@ -1,6 +1,6 @@
 [workspace]
 name = "skyrim-se-head-tracking"
-version = "0.0.0"
+version = "0.1.0"
 description = "Head tracking mod for Skyrim Special Edition using CameraUnlock shared library"
 channels = ["conda-forge"]
 platforms = ["win-64"]
