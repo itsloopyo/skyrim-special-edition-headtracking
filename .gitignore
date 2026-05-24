@@ -3,6 +3,7 @@ bin/
 obj/
 out/
 build/
+libs/
 x64/
 Debug/
 Release/
