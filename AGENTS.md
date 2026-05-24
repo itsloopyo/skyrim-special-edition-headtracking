@@ -73,6 +73,8 @@ Don't be shy to use Ghidra to help us on our quest to crowbar head tracking into
 
 Similarly ilspy/ilspycmd is installed, and should be used to make our lives easier when working on Unity titles.
 
+pe-sieve64 is present in /c/bin
+
 
 <!-- agent: Head tracking mod doctrine -->
 ## Ethics and Conduct
@@ -110,6 +112,7 @@ Non-negotiable:
 - We should endeavour to use as much of cameraunlock-core as benefits us. Similarly we should feed improvements, and shared code back into this library as our mods grow.
 - When creating a new mod from scratch, it should have the version number 0.0.0
 - When asking the user to confirm or check something you are changing, make your changes OBVIOUSLY visible. e.g. instead of "has the marker been repositioned 0.5m" try "is the marker moving from left to right by 5m in an animated loop"
+- Do not ask the user to perform superhuman feats like "turn your head 30degrees and hold for 3s" - do not rely on that level of accuracy from humans.
 
 ---
 
@@ -814,11 +817,18 @@ Each mod has its own `.github/workflows/build.yml` and `release.yml` in its own 
 
     Write-Host "Package created" -ForegroundColor Green
 
+- name: Compute artifact name from ref
+  shell: pwsh
+  run: |
+    $branch = if ($env:GITHUB_HEAD_REF) { $env:GITHUB_HEAD_REF } else { $env:GITHUB_REF_NAME }
+    $sanitized = $branch -replace '[^A-Za-z0-9._-]', '-'
+    "ARTIFACT_NAME=<ModName>HeadTracking-$sanitized" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
 - name: Upload installer artifact
   uses: actions/upload-artifact@v7
   with:
-    name: <ModName>-installer
-    path: release/*-installer.zip
+    name: ${{ env.ARTIFACT_NAME }}
+    path: release/artifact-contents/
     retention-days: 14
     if-no-files-found: error
 ```
@@ -827,12 +837,14 @@ For pixi-driven mods (currently bioshock-remastered), replace the Package step w
 
 Conventions:
 - Pin Node-24-native majors on JS actions: `actions/checkout@v6`, `actions/upload-artifact@v7`, `microsoft/setup-msbuild@v3`. The earlier v4/v4/v2 trio was Node-20-based and triggers the deprecation warning (Node 20 forced off June 2026, removed Sept 2026). Bump majors when newer ones ship.
-- Artifact name `<ModName>-installer` matches the csproj/AssemblyName, lowercase/uppercase kept as-is.
-- Always `path: release/*-installer.zip` (glob) so the step doesn't have to know the version or the exact filename.
+- **Artifact name is `<ModName>HeadTracking-<sanitized-branch>`**, not a flat `-installer` suffix. The "Compute artifact name from ref" step takes `GITHUB_HEAD_REF` (PRs) or `GITHUB_REF_NAME` (push), replaces any char outside `[A-Za-z0-9._-]` with `-`, and exports `ARTIFACT_NAME`. So a push to `main` yields `<ModName>HeadTracking-main`; a feature branch `fix/seamoth` yields `<ModName>HeadTracking-fix-seamoth`. This lets multiple in-flight branches all publish downloadable artifacts without clobbering each other.
+- The upload step's `path` is `release/artifact-contents/` (a staging dir produced by the preceding "Stage installer contents for artifact upload" step that extracts `release/*-installer.zip`), so users downloading the artifact get the installer tree directly rather than a zip-inside-a-zip.
 - `retention-days: 14` is plenty for test-branch iteration; longer just clutters the Actions UI.
 - `if-no-files-found: error` catches packaging failures that don't exit nonzero.
 
-The end-to-end workflow this enables: branch off `main` -> push -> workflow run completes -> download the `<ModName>-installer` artifact from the Actions run page -> hand the ZIP to the user to run `install.cmd` against their game. Only after they confirm the fix, cut a real release via `release.ps1`.
+The end-to-end workflow this enables: branch off `main` -> push -> workflow run completes -> download the `<ModName>HeadTracking-<branch>` artifact from the Actions run page -> hand the unpacked tree to the user to run `install.cmd` against their game. Only after they confirm the fix, cut a real release via `release.ps1`.
+
+**lopari catalog coupling.** When a mod is added to `lopari/catalog/mods.json`, the `nightly.artifact` field must match the actual artifact name the workflow uploads. For the default branch that is `<ModName>HeadTracking-main`. Older catalog entries (subnautica, DL2, peak, RE4, skyrim-special-edition, painscreek, RE9, bioshock-remastered) still carry the legacy `-installer` suffix from before the per-branch naming switch; do not copy those when authoring a new entry. Cross-check against a recent entry (cyberpunk-2077, easy-delivery-co, fallout-new-vegas, black-and-white) which uses the current `-main` form.
 
 **`release.yml` triggers:** push of `v*.*.*` tags only. Does its own submodule-recursive checkout, full Release build, `scripts/package-release.ps1`, release-notes generation via `generate-release-notes.ps1`, and `gh release create` with the installer and nexus ZIPs attached.
 
@@ -1035,3 +1047,31 @@ Existing mods have inconsistent GUIDs (`com.headtracking.obradinn`, `com.<game>.
 ## C++ Camera Discovery (REDengine / similar engines)
 
 For finding the camera in a new C++ engine, see the `port-camera-to-cpp-engine` skill.
+
+---
+
+## UE5 (Unreal Engine 5) C++ Hook Notes
+
+### FVector / FRotator are doubles, not floats
+
+UE 5.0+ ships with Large World Coordinates (LWC) on by default. The canonical `FVector` is `FVector3d` (3 doubles, 24 bytes) and `FRotator` is `FRotator3d` (3 doubles, 24 bytes). The float versions (`FVector3f`, `FRotator3f`) only appear where engine code explicitly opts in.
+
+For any UE5 C++ mod that hooks a function taking `FVector*` / `FRotator*` out-params (or any struct containing them, e.g. `FMinimalViewInfo`), declare the structs as doubles:
+
+```cpp
+struct FVector  { double X, Y, Z; };       // 24 bytes
+struct FRotator { double Pitch, Yaw, Roll; }; // 24 bytes
+```
+
+**Why it matters:** Declaring them as floats (12 bytes) causes two problems on every call:
+
+1. The engine writes 24 bytes into the 12-byte buffer, overflowing 12 bytes of stack adjacent to the buffer. Silent memory corruption.
+2. The bytes that *do* land in the buffer get read as the wrong fields. One field (typically Yaw) lands on the high half of an adjacent double and happens to decode as a small float that looks plausible; the others decode to ~1e25-1e27 garbage. Add tracker delta on top and the camera spins wildly when those values mod 360.
+
+**Symptom that points here:** rotation/position field values in the 1e10-1e27 range or values that change shape per-call by orders of magnitude. If only one of three axes looks sane and the others are huge, it's almost always this.
+
+Confirmed in Subnautica 2 (UE 5.6.1). Will apply to every future UE5 C++ mod unless the specific build has disabled LWC, which is rare. Verify by dumping `loc_post` from a known position (e.g. spawn) - if Y and Z look sensible in meters and X is ~1e12, the struct is wrong.
+
+### `GetPlayerViewPoint` is the wrong hook target
+
+Even with the structs correct: `APlayerController::GetPlayerViewPoint` is read by weapons, AI sight checks, projectile spawning, raycasts. Modifying it violates the "zero impact on game logic" rule from the Camera System section. Use the pre/post + render-phase pattern from "C++ Pre/Post Hook" above and inject into the view-matrix path, not the game-query path.
