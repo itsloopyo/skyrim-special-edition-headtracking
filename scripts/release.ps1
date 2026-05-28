@@ -53,8 +53,13 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     Write-Host $currentVersion -ForegroundColor White
     Write-Host ""
     Write-Host "Usage: " -NoNewline -ForegroundColor Yellow
-    Write-Host "pixi run release <major|minor|patch|X.Y.Z>" -ForegroundColor White
+    Write-Host "pixi run release <major|minor|patch|nightly|X.Y.Z>" -ForegroundColor White
     exit 0
+}
+
+if ($Version -eq 'nightly') {
+    & (Join-Path $scriptDir 'release-nightly.ps1')
+    exit $LASTEXITCODE
 }
 
 # Step 1: resolve major/minor/patch into a concrete version (or accept literal X.Y.Z)
