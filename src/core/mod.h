@@ -2,10 +2,7 @@
 
 #include "config.h"
 #include <cameraunlock/protocol/udp_receiver.h>
-#include <cameraunlock/processing/tracking_processor.h>
-#include <cameraunlock/processing/pose_interpolator.h>
-#include <cameraunlock/processing/position_processor.h>
-#include <cameraunlock/processing/position_interpolator.h>
+#include <cameraunlock/tracking/head_tracking_session.h>
 
 namespace SkyrimHT {
 
@@ -57,15 +54,11 @@ private:
 
     Config m_config;
     cameraunlock::UdpReceiver m_udpReceiver;
-    cameraunlock::PoseInterpolator m_poseInterpolator;
-    cameraunlock::TrackingProcessor m_processor;
-    int64_t m_lastReceiveTimestamp = 0;
-
-    // Position processing (6DOF)
-    cameraunlock::PositionProcessor m_positionProcessor;
-    cameraunlock::PositionInterpolator m_positionInterpolator;
-    // 0 = Full 6DOF, 1 = rotation only, 2 = position only. Cycled by hotkey.
-    std::atomic<int> m_dofMode{0};
+    // Shared per-frame pipeline (interpolation, processing, 6DOF, mode cycling,
+    // stabilized auto-recenter). Updated at most once per cache window from
+    // GetProcessedRotation; hotkey-thread calls (Recenter/CycleDofMode) follow
+    // the session's documented threading model.
+    cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver> m_session{m_udpReceiver};
 
     // Yaw mode: true = horizon-locked (world), false = camera-local
     std::atomic<bool> m_worldSpaceYaw{true};
@@ -75,15 +68,7 @@ private:
 
     // Timing for frame-rate independent processing
     uint64_t m_lastProcessTime = 0;
-    float m_lastDeltaTime = 0.016f;
 
-    // Cached rotation from last GetProcessedRotation
-    float m_cachedYaw = 0.0f;
-    float m_cachedPitch = 0.0f;
-    float m_cachedRoll = 0.0f;
-    bool m_cachedValid = false;
-
-    bool m_hasCentered = false;
     bool m_cameraHookInstalled = false;
     bool m_inputHookInstalled = false;
     bool m_playerHookInstalled = false;
