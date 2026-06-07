@@ -28,6 +28,7 @@ $installCmd   = Join-Path $scriptDir "install.cmd"
 $cmakePath    = Join-Path $projectDir "CMakeLists.txt"
 $pixiPath     = Join-Path $projectDir "pixi.toml"
 $constantsPath = Join-Path $projectDir "src/core/constants.h"
+$manifestJsonPath = Join-Path $projectDir "launcher-manifest.json"
 
 Import-Module (Join-Path $projectDir "cameraunlock-core/powershell/ReleaseWorkflow.psm1") -Force
 
@@ -104,6 +105,11 @@ Set-Version $Version
 (Get-Content $pixiPath -Raw) -replace '(?m)^version = "\d+\.\d+\.\d+"', "version = `"$Version`"" | Set-Content $pixiPath -NoNewline
 (Get-Content $constantsPath -Raw) -replace 'inline constexpr const char\* VERSION = "\d+\.\d+\.\d+";', "inline constexpr const char* VERSION = `"$Version`";" | Set-Content $constantsPath -NoNewline
 
+# launcher-manifest.json is the canonical launcher manifest the launcher ingests; keep its version in lockstep.
+$launcherManifest = Get-Content $manifestJsonPath -Raw | ConvertFrom-Json
+$launcherManifest.mod_info.version = $Version
+$launcherManifest | ConvertTo-Json -Depth 10 | Set-Content $manifestJsonPath -NoNewline
+
 # Step 4: build
 Write-Host "Running 'pixi run build-release'..." -ForegroundColor Cyan
 Push-Location $projectDir
@@ -140,7 +146,7 @@ if (-not $hasExistingTags) {
 
 # Step 6: commit
 Write-Host "Committing version change..." -ForegroundColor Cyan
-git add $manifestPath $changelogPath $installCmd $cmakePath $pixiPath $constantsPath
+git add $manifestPath $manifestJsonPath $changelogPath $installCmd $cmakePath $pixiPath $constantsPath
 git commit -m "Release v$Version"
 if ($LASTEXITCODE -ne 0) { throw "git commit failed" }
 

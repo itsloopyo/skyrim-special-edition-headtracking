@@ -36,7 +36,8 @@ $vendorAsiDll = Join-Path $vendorAsiDir 'dinput8.dll'
 # unexpected hash aborts the refresh so a hijacked/tampered upstream
 # release cannot silently land in the next commit.
 $AllowedDllSha256 = @(
-    '810111a7f6a6cef892877c9f7c4582ccde2d621d119891f700c5309c370508bf'
+    '810111a7f6a6cef892877c9f7c4582ccde2d621d119891f700c5309c370508bf',
+    '22fda9c71eaae02460f311bf3441638340ab591586d78f1de213c4819dcb883c'
 )
 
 if (-not (Test-Path $vendorAsiDir)) {

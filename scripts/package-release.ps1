@@ -3,7 +3,8 @@
 # Package release ZIPs for Skyrim SE Head Tracking.
 # Produces two archives in release/:
 #   - SkyrimSEHeadTracking-v<version>-installer.zip (GitHub Releases)
-#       install.cmd + uninstall.cmd + plugins/ + vendor/ultimate-asi-loader/
+#       launcher-manifest.json + install.cmd + uninstall.cmd + plugins/
+#       + vendor/ultimate-asi-loader/
 #       + shared/ (find-game.ps1 + GamePathDetection.psm1 + games.json)
 #       + docs
 #   - SkyrimSEHeadTracking-v<version>-nexus.zip (Nexus Mods)
@@ -78,6 +79,20 @@ foreach ($script in @("install.cmd", "uninstall.cmd")) {
     Copy-Item (Join-Path $scriptsDir $script) -Destination $stagingInstaller -Force
     Write-Host "  $script" -ForegroundColor Green
 }
+
+# Canonical launcher manifest (AGENTS.md: launcher-manifest.json, snake_case v2
+# schema). Stamped to the release version and dropped at the installer ZIP root
+# so the launcher can ingest this package's metadata (mod_info / files / loader /
+# dependencies / runtime_requirements) without parsing install.cmd. delivery_mode
+# is "install_cmd": deployment still runs via the legacy install.cmd/uninstall.cmd
+# path that sits alongside it (the single-DLL ASI loader copy is not yet
+# expressible in the v2 loader.archives zip-only schema).
+$manifestSource = Join-Path $projectDir "launcher-manifest.json"
+if (-not (Test-Path $manifestSource)) { throw "launcher-manifest.json not found at: $manifestSource" }
+$launcherManifest = Get-Content $manifestSource -Raw | ConvertFrom-Json
+$launcherManifest.mod_info.version = $version
+$launcherManifest | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $stagingInstaller "launcher-manifest.json") -NoNewline
+Write-Host "  launcher-manifest.json" -ForegroundColor Green
 
 $pluginsDir = Join-Path $stagingInstaller "plugins"
 New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null

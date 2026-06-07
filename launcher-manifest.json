@@ -1,0 +1,34 @@
+{
+  "schema_version": 2,
+  "mod_info": {
+    "name": "SkyrimSEHeadTracking",
+    "version": "0.1.0",
+    "game_id": "skyrim-special-edition"
+  },
+  "strategy": "AsiLoader",
+  "delivery_mode": "manifest",
+
+  "loader": {
+    "seed": [
+      {
+        "target": "HeadTracking.ini",
+        "content_b64": "OyBTa3lyaW0gU0UgSGVhZCBUcmFja2luZyBDb25maWd1cmF0aW9uCjsgRGVsZXRlIHRoaXMgZmlsZSB0byByZXNldCB0byBkZWZhdWx0cwoKW05ldHdvcmtdCjsgVURQIHBvcnQgZm9yIE9wZW5UcmFjayBkYXRhIChkZWZhdWx0OiA0MjQyKQpVRFBQb3J0PTQyNDIKCltTZW5zaXRpdml0eV0KOyBSb3RhdGlvbiBzZW5zaXRpdml0eSBtdWx0aXBsaWVycyAoMS4wID0gMToxKQpZYXdNdWx0aXBsaWVyPTEuMApQaXRjaE11bHRpcGxpZXI9MS4wClJvbGxNdWx0aXBsaWVyPTEuMAo7IFJvdGF0aW9uIHNtb290aGluZyAoMC4wID0gc25hcHB5LCBpbnRlcm5hbCAwLjE1IGZsb29yIHN0aWxsIGFwcGxpZWQ7CjsgcmFpc2UgdG93YXJkIDEuMCBmb3Igbm9pc2llciB0cmFja2VycyAtIGNvc3RzIHBlcmNlaXZlZCBsYXRlbmN5KQpSb3RhdGlvblNtb290aGluZz0wLjAKCltQb3NpdGlvbl0KOyBQb3NpdGlvbiB0cmFja2luZyBzZW5zaXRpdml0eSAoMC4xLTEwLjAsIGhpZ2hlciA9IG1vcmUgbW92ZW1lbnQpClNlbnNpdGl2aXR5WD0xLjAKU2Vuc2l0aXZpdHlZPTEuMApTZW5zaXRpdml0eVo9MS4wCjsgUG9zaXRpb24gbGltaXRzIGluIG1ldGVycyAoaG93IGZhciB0aGUgY2FtZXJhIGNhbiBtb3ZlKQpMaW1pdFg9MC4zMApMaW1pdFk9MC4yMApMaW1pdFo9MC40MAo7IEJhY2t3YXJkIGxlYW4gbGltaXQgKHByZXZlbnRzIGNhbWVyYSBjbGlwcGluZyB0aHJvdWdoIHBsYXllciBtb2RlbCkKTGltaXRaQmFjaz0wLjEwCjsgU21vb3RoaW5nIGZhY3RvciAoMC4wID0gbm9uZSwgMC45OSA9IG1heGltdW0pClNtb290aGluZz0wLjE1CjsgSW52ZXJ0IHBvc2l0aW9uIGF4ZXMKSW52ZXJ0WD10cnVlCkludmVydFk9ZmFsc2UKSW52ZXJ0Wj10cnVlCjsgRW5hYmxlL2Rpc2FibGUgcG9zaXRpb24gdHJhY2tpbmcgKDZET0YpCkVuYWJsZWQ9dHJ1ZQoKW0hvdGtleXNdCjsgVmlydHVhbCBrZXkgY29kZXMgKGhleCkKVG9nZ2xlS2V5PTB4MjMgICAgOyBFbmQgLSBFbmFibGUvZGlzYWJsZSBoZWFkIHRyYWNraW5nClJlY2VudGVyS2V5PTB4MjQgIDsgSG9tZSAtIFJlY2VudGVyIHZpZXcKUG9zaXRpb25Ub2dnbGVLZXk9MHgyMSA7IFBhZ2UgVXAgLSBUb2dnbGUgcG9zaXRpb24gdHJhY2tpbmcKWWF3TW9kZUtleT0weDIyICAgOyBQYWdlIERvd24gLSBUb2dnbGUgd29ybGQvbG9jYWwgeWF3CgpbR2VuZXJhbF0KOyBBdXRvLWVuYWJsZSB0cmFja2luZyBvbiBnYW1lIHN0YXJ0CkF1dG9FbmFibGU9dHJ1ZQo7IFNob3cgb24tc2NyZWVuIG5vdGlmaWNhdGlvbnMgKGxvZ2dlZCB0byBIZWFkVHJhY2tpbmcubG9nKQpTaG93Tm90aWZpY2F0aW9ucz10cnVlCjsgWWF3IG1vZGU6IHRydWUgPSBob3Jpem9uLWxvY2tlZCAoZGVmYXVsdCksIGZhbHNlID0gY2FtZXJhLWxvY2FsCldvcmxkU3BhY2VZYXc9dHJ1ZQo="
+      }
+    ]
+  },
+
+  "files": [
+    {
+      "source": "vendor/ultimate-asi-loader/dinput8.dll",
+      "target": "dinput8.dll",
+      "backup": true
+    },
+    {
+      "source": "plugins/SkyrimSEHeadTracking.asi",
+      "target": "SkyrimSEHeadTracking.asi"
+    }
+  ],
+
+  "runtime_requirements": [],
+  "dependencies": []
+}
