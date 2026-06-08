@@ -46,7 +46,6 @@ set(MOD_SOURCES
     src/hooks/hud_menu_hook.cpp
     src/hooks/crosshair_override.cpp
     src/hooks/projectile_hook.cpp
-    src/hooks/marker_hook.cpp
     src/game/game_state.cpp
     src/ui/notification.cpp
     src/ui/crosshair_overlay.cpp

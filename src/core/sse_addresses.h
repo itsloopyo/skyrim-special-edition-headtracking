@@ -24,13 +24,4 @@ uintptr_t UpdatePickData_Function();
 // hasn't been called or failed.
 uintptr_t ProjectileLaunch_Function();
 
-// Absolute address of the Scaleform array element setter used by Compass::Update.
-uintptr_t ScaleformArraySetElement_Function();
-
-// Absolute address of the Scaleform method invoke helper used by Compass::Update.
-uintptr_t ScaleformInvoke_Function();
-
-// Absolute address of Compass::Update.
-uintptr_t CompassUpdate_Function();
-
 } // namespace SkyrimHT::SSEAddresses

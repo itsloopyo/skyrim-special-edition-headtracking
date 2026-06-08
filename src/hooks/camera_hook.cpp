@@ -271,15 +271,11 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
 
         // worldToCam is the renderer's view matrix in GRAPHICS convention.
         // In local-yaw mode pre-multiply by headRotView so the renderer's
-        // effective view matches our niCamera.world modification - without
-        // this, head roll is visible on the rendered scene but our marker
-        // reprojection's tracked basis ends up out of sync with the renderer
-        // for roll combined with mouse yaw/pitch, producing perpendicular
-        // marker drift (sin(roll) * mouse_angle). World-yaw mode must NOT
-        // write worldToCam: the split prOnlyView/yawOnly formula leaves it
-        // inconsistent with niCamera.world and a culling/lighting pass that
-        // reads worldToCam directly rendered a bright vertical band that
-        // tracked head yaw.
+        // effective view matches our niCamera.world modification. World-yaw mode
+        // must NOT write worldToCam: the split prOnlyView/yawOnly formula leaves
+        // it inconsistent with niCamera.world and a culling/lighting pass that
+        // reads worldToCam directly rendered a bright vertical band that tracked
+        // head yaw.
         if (!worldYaw) {
             worldToCam->PreMultiplyRotation(headRotView);
         }

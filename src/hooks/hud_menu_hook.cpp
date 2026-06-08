@@ -189,21 +189,26 @@ ScreenAnchoredPathState g_screenAnchoredPaths[] = {
     },
 };
 
-// Floating quest marker: engine projects it through the CLEAN niCamera basis
-// (restored by player_hook during PlayerCharacter::Update). To make it ride
-// with the tracked view, we recover the marker's world direction from its
-// stage position using the clean basis, then re-project that direction
-// through the tracked basis and write back the new stage position. Exact for
-// any marker position; screen-anchored aim-offset would only be exact for
-// markers on the body-aim axis and degrades with off-axis angle.
-// We compensate the floating marker per HUD frame by reading the engine's
-// clean stage projection and reprojecting through the tracked basis. The
-// engine writes the marker irregularly (not necessarily every frame), so we
-// have to distinguish "engine just rewrote this" from "marker still holds
-// our last write" - otherwise reprojecting our own writes compounds into a
-// spiral. The trick: remember what we wrote. If the current value matches
-// (within epsilon), engine didn't touch it - reuse our remembered base. If
-// it differs, the engine wrote fresh - adopt the new value as base.
+// Floating quest marker (FloatingQuestMarker_mc). What mapping this on
+// SkyrimSE 1.5.97 established (see .lab/NOTES.md):
+//  - The engine pins this clip's _x/_y near 0 and positions the visible marker
+//    via an unnamed deep child; it does NOT set the position through
+//    GFxMovieView::SetVariable (only quest-notification text goes that way). So
+//    the marker's true off-centre position isn't readable, and our write to
+//    _x/_y acts as a screen-space OFFSET on top of the engine's positioning.
+//  - With no readable true position this is a screen-centre aim-offset
+//    compensation, not a true per-marker reprojection: exact when looking near
+//    the target, approximate off-axis.
+//  - World-yaw: the camera hook leaves worldToCam clean, so the engine applies
+//    no head tracking to the marker and we supply the full offset (both axes).
+//  - Local-yaw: the engine head-rotates worldToCam and already glues the marker
+//    horizontally, so we supply ONLY the vertical offset (the engine clamps
+//    pitch); adding horizontal there drives it off-target.
+//  - Roll and off-centre-under-roll are NOT compensated (would need the true
+//    marker position). Known limitation.
+// baseX/baseY below read back our own writes (the engine holds the container at
+// ~0), so they stay ~0 and this reduces to the centre aim-offset; the
+// engine-write detector just keeps that base stable against round-trip jitter.
 struct FloatingMarkerPathState {
     const char*  xPath;
     const char*  yPath;
@@ -289,11 +294,34 @@ bool ReprojectFloatingMarker(
 
     if (trackedFwd < 0.01) return false;  // behind tracked camera; leave alone
 
-    const double ndcX = trackedRight / trackedFwd / snap.frustumRight;
-    const double ndcY = -trackedUp   / trackedFwd / snap.frustumTop;
-    const double targetX = ndcX * screenW * 0.5 * stagesPerPixelX;
+    const double ndcX = trackedRight / trackedFwd / snap.frustumRight;  // glued horizontal
+    const double ndcY = -trackedUp   / trackedFwd / snap.frustumTop;    // glued vertical
+    // The engine positions the visible marker; our writes act as an offset on
+    // top (the container's own _x/._y read back as ~0). The engine never tracks
+    // the marker vertically (pitch is clamped), so we always supply the vertical
+    // offset. Horizontally the two yaw modes differ:
+    //  - world-yaw: the camera hook leaves worldToCam clean, so the engine does
+    //    NO horizontal tracking and we supply the full glued offset.
+    //  - local-yaw: the camera hook head-rotates worldToCam and the engine
+    //    already glues the marker horizontally through it (verified with zero
+    //    writes: yaw stayed on target). So we must NOT touch _x there - any
+    //    horizontal offset we add only drives the marker off the target.
     const double targetY = ndcY * screenH * 0.5 * stagesPerPixelY;
 
+    // Local-yaw: the engine glues the marker HORIZONTALLY on its own (yaw tracks
+    // with zero writes) but clamps it vertically (pitch stays fixed). The engine
+    // drives horizontal through this same container, so we must NOT write _x -
+    // writing even 0 to it clobbers the engine's gluing and yaw drifts (that was
+    // the bug in the earlier "vertical-only" build, which still wrote _x=0). So
+    // write ONLY _y to add the vertical offset the engine omits. World-yaw leaves
+    // worldToCam clean (engine applies no head tracking to the marker), so there
+    // we supply the full offset on both axes.
+    if (!Mod::Instance().IsWorldSpaceYaw()) {
+        if (!CallSetVariableNumber(movieView, state.yPath, targetY)) return false;
+        state.lastWrittenY = targetY;
+        return true;
+    }
+    const double targetX = ndcX * screenW * 0.5 * stagesPerPixelX;
     if (!CallSetVariableNumber(movieView, state.xPath, targetX)) return false;
     if (!CallSetVariableNumber(movieView, state.yPath, targetY)) return false;
     state.lastWrittenX = targetX;
@@ -310,14 +338,6 @@ void UpdateFloatingMarkerReprojection(void* movieView,
     const float screenH = g_screenHeightPx.load(std::memory_order_relaxed);
     if (screenW < 1.0f || screenH < 1.0f) return;
 
-    // Same per-marker reprojection in both yaw modes. Engine writes the
-    // marker once (when activated) at the projection through cleanNiCamWorld;
-    // we hold onto that base via the engine-write detector and reproject
-    // through the current tracked basis each frame so the marker follows the
-    // NPC as the head rotates. The basis transform from cleanNiCamWorld to
-    // trackedNiCamWorld is exact in both yaw modes (verified algebraically:
-    // both yaw modes leave niCamera.world = cleanNiCamWorld * <mode-specific
-    // composed rotation>, which is what we capture as trackedNiCamWorld).
     for (auto& path : g_floatingMarkerPaths) {
         ReprojectFloatingMarker(movieView, snap, path, screenW, screenH);
     }

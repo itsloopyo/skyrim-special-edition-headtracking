@@ -8,7 +8,6 @@
 #include "hooks/input_hook.h"
 #include "hooks/player_hook.h"
 #include "hooks/hud_menu_hook.h"
-#include "hooks/marker_hook.h"
 #include "hooks/crosshair_override.h"
 #include "hooks/projectile_hook.h"
 #include "ui/notification.h"
@@ -226,10 +225,6 @@ bool Mod::InitializeHooks() {
         Logger::Instance().Warning("HUDMenu hook failed - native crosshair control unavailable");
     }
 
-    if (!InstallMarkerHook()) {
-        Logger::Instance().Warning("Marker hook failed - marker diagnostics unavailable");
-    }
-
     if (InitializeCrosshairOverride()) {
         InstallUpdateCrosshairsHook();
     }
@@ -258,8 +253,6 @@ void Mod::ShutdownHooks() {
         RemoveCameraHook();
         m_cameraHookInstalled = false;
     }
-
-    RemoveMarkerHook();
 
     HookManager::Instance().Shutdown();
 }
