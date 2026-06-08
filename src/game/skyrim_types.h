@@ -73,45 +73,11 @@ struct NiMatrix33 {
     }
 };
 
-// Row-major 4x4 matrix (used for worldToCam)
+// Row-major 4x4 matrix (used for worldToCam). Head tracking modifies its
+// translation directly (6DOF lean) but never its rotation, so no rotation
+// helpers are needed.
 struct NiMatrix44 {
     float entry[4][4];
-
-    // Pre-multiply by a 3x3 rotation (upper-left block), leaving translation/perspective intact.
-    // Each new row 0..2 depends only on input rows 0..2, so only save those (48 bytes instead of 64).
-    void PreMultiplyRotation(const NiMatrix33& rot) {
-        float tmp[3][4];
-        memcpy(tmp, entry, sizeof(tmp));
-
-        for (int i = 0; i < 3; i++) {
-            const float r0 = rot.entry[i][0];
-            const float r1 = rot.entry[i][1];
-            const float r2 = rot.entry[i][2];
-            for (int j = 0; j < 4; j++) {
-                entry[i][j] = r0 * tmp[0][j] + r1 * tmp[1][j] + r2 * tmp[2][j];
-            }
-        }
-        // Row 3 stays [0, 0, 0, 1] - unchanged
-    }
-
-    // Post-multiply the upper 3x3 block by a 3x3 rotation. Only columns 0..2
-    // change; column 3 (translation) is untouched because the rotation has an
-    // implicit (0,0,0,1) fourth row/column.
-    void PostMultiplyRotation(const NiMatrix33& rot) {
-        float tmp[3][3];
-        for (int i = 0; i < 3; i++) {
-            tmp[i][0] = entry[i][0];
-            tmp[i][1] = entry[i][1];
-            tmp[i][2] = entry[i][2];
-        }
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                entry[i][j] = tmp[i][0] * rot.entry[0][j]
-                            + tmp[i][1] * rot.entry[1][j]
-                            + tmp[i][2] * rot.entry[2][j];
-            }
-        }
-    }
 };
 static_assert(sizeof(NiMatrix44) == 0x40, "NiMatrix44 size mismatch");
 

@@ -189,64 +189,58 @@ ScreenAnchoredPathState g_screenAnchoredPaths[] = {
     },
 };
 
-// Floating quest marker (FloatingQuestMarker_mc). What mapping this on
-// SkyrimSE 1.5.97 established (see .lab/NOTES.md):
-//  - The engine pins this clip's _x/_y near 0 and positions the visible marker
-//    via an unnamed deep child; it does NOT set the position through
-//    GFxMovieView::SetVariable (only quest-notification text goes that way). So
-//    the marker's true off-centre position isn't readable, and our write to
-//    _x/_y acts as a screen-space OFFSET on top of the engine's positioning.
-//  - With no readable true position this is a screen-centre aim-offset
-//    compensation, not a true per-marker reprojection: exact when looking near
-//    the target, approximate off-axis.
-//  - World-yaw: the camera hook leaves worldToCam clean, so the engine applies
-//    no head tracking to the marker and we supply the full offset (both axes).
-//  - Local-yaw: the engine head-rotates worldToCam and already glues the marker
-//    horizontally, so we supply ONLY the vertical offset (the engine clamps
-//    pitch); adding horizontal there drives it off-target.
-//  - Roll and off-centre-under-roll are NOT compensated (would need the true
-//    marker position). Known limitation.
-// baseX/baseY below read back our own writes (the engine holds the container at
-// ~0), so they stay ~0 and this reduces to the centre aim-offset; the
-// engine-write detector just keeps that base stable against round-trip jitter.
-struct FloatingMarkerPathState {
-    const char*  xPath;
-    const char*  yPath;
-    bool         hasBase;
-    double       baseX;
-    double       baseY;
-    double       lastWrittenX;
-    double       lastWrittenY;
-};
+// Floating quest markers. Ghidra (FUN_140923800 on 1.6.1170) showed the engine
+// attaches up to 48 marker clips named target0..target47 (class
+// "quest target_HUD") under FloatingQuestMarkerInstance, and positions each at
+// the quest target's CLEAN screen projection. Verified at runtime: target0._x/._y
+// holds the real off-centre position and does NOT move with the head (the engine
+// projects with the clean, body-locked camera; player_hook restores it during
+// Update). So we reproject the REAL marker exactly: read its clean stage
+// position, recover the world direction through the clean camera basis, then
+// re-project that direction through the tracked basis and write it back.
+//
+// This is exact for every marker on all axes (yaw/pitch/roll, off-centre) in
+// BOTH yaw modes - no per-axis approximation, no yaw-mode special-casing - and
+// is version-independent (pure GFx member paths, no hardcoded RVAs).
+//
+// Inactive markers sit parked at the origin; we skip those. The engine rewrites
+// each active marker every frame at its clean projection, so the engine-write
+// detector distinguishes "engine refreshed the clean value" from "our reprojected
+// write still stands", preventing us from reprojecting our own output (a spiral).
+constexpr int kMaxFloatingMarkers = 12;
 
-FloatingMarkerPathState g_floatingMarkerPaths[] = {
-    {
-        "HUDMovieBaseInstance.FloatingQuestMarker_mc._x",
-        "HUDMovieBaseInstance.FloatingQuestMarker_mc._y",
-        false, 0.0, 0.0, 0.0, 0.0,
-    },
+struct FloatingMarkerState {
+    bool   hasBase;
+    double baseX;
+    double baseY;
+    double lastWrittenX;
+    double lastWrittenY;
 };
+FloatingMarkerState g_floatingMarkers[kMaxFloatingMarkers] = {};
 
 bool ReprojectFloatingMarker(
     void* movieView,
     const CameraRootSnapshots& snap,
-    FloatingMarkerPathState& state,
+    int index,
+    FloatingMarkerState& state,
     float screenW,
     float screenH) {
     if (snap.niCamera == 0) return false;
     if (snap.frustumRight <= 0.0f || snap.frustumTop <= 0.0f) return false;
 
+    char xPath[96];
+    char yPath[96];
+    snprintf(xPath, sizeof(xPath), "HUDMovieBaseInstance.FloatingQuestMarkerInstance.target%d._x", index);
+    snprintf(yPath, sizeof(yPath), "HUDMovieBaseInstance.FloatingQuestMarkerInstance.target%d._y", index);
+
     double currentX = 0.0;
     double currentY = 0.0;
-    if (!CallGetVariableNumber(movieView, state.xPath, currentX)) return false;
-    if (!CallGetVariableNumber(movieView, state.yPath, currentY)) return false;
+    if (!CallGetVariableNumber(movieView, xPath, currentX)) return false;  // clip absent
+    if (!CallGetVariableNumber(movieView, yPath, currentY)) return false;
 
-    // Engine wrote a fresh value iff the current value differs from what we
-    // last wrote. Epsilon has to be loose enough to swallow Scaleform's
-    // internal twip rounding / tween interpolation of our writes - if
-    // round-trip jitter trips this, we falsely adopt our own (already-
-    // projected) value as a new base and spiral. 5 stage units is ~7 screen
-    // pixels; engine quest-marker updates are tens or hundreds of units.
+    // Engine refreshed the clean value iff it differs from what we last wrote.
+    // Loose epsilon swallows Scaleform twip rounding of our own writes; engine
+    // marker moves are tens-to-hundreds of stage units.
     constexpr double kEngineWriteEpsilon = 5.0;
     const bool engineRewrote = !state.hasBase
         || std::abs(currentX - state.lastWrittenX) > kEngineWriteEpsilon
@@ -259,71 +253,40 @@ bool ReprojectFloatingMarker(
     const double baseX = state.baseX;
     const double baseY = state.baseY;
 
+    // Inactive marker parked at the origin - leave it and reset so a future
+    // activation re-bases cleanly.
+    if (std::abs(baseX) < 0.5 && std::abs(baseY) < 0.5) {
+        state.hasBase = false;
+        return false;
+    }
+
     const double stagesPerPixelX = static_cast<double>(g_stageAuthoredWidth)  / screenW;
     const double stagesPerPixelY = static_cast<double>(g_stageAuthoredHeight) / screenH;
 
-    // Stage-to-NDC assuming the marker container is anchored at stage centre
-    // (HUDMovieBaseInstance has its origin offset to stage centre - confirmed
-    // empirically by RolloverText sliding correctly with the same convention).
     const double cleanPxX = baseX / stagesPerPixelX;
     const double cleanPxY = baseY / stagesPerPixelY;
     const double cleanRight = (cleanPxX / (screenW * 0.5)) * snap.frustumRight;
     const double cleanUp    = -(cleanPxY / (screenH * 0.5)) * snap.frustumTop;
 
-    // World direction = clean_forward + clean_up * cleanUp + clean_right * cleanRight
-    const double wx = snap.cleanNiCamWorld[0][0]
-                    + snap.cleanNiCamWorld[0][1] * cleanUp
-                    + snap.cleanNiCamWorld[0][2] * cleanRight;
-    const double wy = snap.cleanNiCamWorld[1][0]
-                    + snap.cleanNiCamWorld[1][1] * cleanUp
-                    + snap.cleanNiCamWorld[1][2] * cleanRight;
-    const double wz = snap.cleanNiCamWorld[2][0]
-                    + snap.cleanNiCamWorld[2][1] * cleanUp
-                    + snap.cleanNiCamWorld[2][2] * cleanRight;
+    // Reconstruct the world direction from the marker's clean stage position,
+    // then re-project through the tracked basis.
+    const double wx = snap.cleanNiCamWorld[0][0] + snap.cleanNiCamWorld[0][1]*cleanUp + snap.cleanNiCamWorld[0][2]*cleanRight;
+    const double wy = snap.cleanNiCamWorld[1][0] + snap.cleanNiCamWorld[1][1]*cleanUp + snap.cleanNiCamWorld[1][2]*cleanRight;
+    const double wz = snap.cleanNiCamWorld[2][0] + snap.cleanNiCamWorld[2][1]*cleanUp + snap.cleanNiCamWorld[2][2]*cleanRight;
 
-    // Project through the full tracked basis (roll included). Off-centre NPCs
-    // are rotated around screen centre by the renderer's rolled basis, so the
-    // marker must also rotate around screen centre to follow them. For a
-    // centred NPC the rotation is a no-op (centred points don't move under
-    // rotation around centre), so this is correct in both cases - any
-    // perceived "drift" from a non-tilted seated POV is the marker correctly
-    // tracking the world-anchored point through the rolled rendering.
     const double trackedFwd   = snap.trackedNiCamWorld[0][0]*wx + snap.trackedNiCamWorld[1][0]*wy + snap.trackedNiCamWorld[2][0]*wz;
     const double trackedUp    = snap.trackedNiCamWorld[0][1]*wx + snap.trackedNiCamWorld[1][1]*wy + snap.trackedNiCamWorld[2][1]*wz;
     const double trackedRight = snap.trackedNiCamWorld[0][2]*wx + snap.trackedNiCamWorld[1][2]*wy + snap.trackedNiCamWorld[2][2]*wz;
 
     if (trackedFwd < 0.01) return false;  // behind tracked camera; leave alone
 
-    const double ndcX = trackedRight / trackedFwd / snap.frustumRight;  // glued horizontal
-    const double ndcY = -trackedUp   / trackedFwd / snap.frustumTop;    // glued vertical
-    // The engine positions the visible marker; our writes act as an offset on
-    // top (the container's own _x/._y read back as ~0). The engine never tracks
-    // the marker vertically (pitch is clamped), so we always supply the vertical
-    // offset. Horizontally the two yaw modes differ:
-    //  - world-yaw: the camera hook leaves worldToCam clean, so the engine does
-    //    NO horizontal tracking and we supply the full glued offset.
-    //  - local-yaw: the camera hook head-rotates worldToCam and the engine
-    //    already glues the marker horizontally through it (verified with zero
-    //    writes: yaw stayed on target). So we must NOT touch _x there - any
-    //    horizontal offset we add only drives the marker off the target.
+    const double ndcX = trackedRight / trackedFwd / snap.frustumRight;
+    const double ndcY = -trackedUp   / trackedFwd / snap.frustumTop;
+    const double targetX = ndcX * screenW * 0.5 * stagesPerPixelX;
     const double targetY = ndcY * screenH * 0.5 * stagesPerPixelY;
 
-    // Local-yaw: the engine glues the marker HORIZONTALLY on its own (yaw tracks
-    // with zero writes) but clamps it vertically (pitch stays fixed). The engine
-    // drives horizontal through this same container, so we must NOT write _x -
-    // writing even 0 to it clobbers the engine's gluing and yaw drifts (that was
-    // the bug in the earlier "vertical-only" build, which still wrote _x=0). So
-    // write ONLY _y to add the vertical offset the engine omits. World-yaw leaves
-    // worldToCam clean (engine applies no head tracking to the marker), so there
-    // we supply the full offset on both axes.
-    if (!Mod::Instance().IsWorldSpaceYaw()) {
-        if (!CallSetVariableNumber(movieView, state.yPath, targetY)) return false;
-        state.lastWrittenY = targetY;
-        return true;
-    }
-    const double targetX = ndcX * screenW * 0.5 * stagesPerPixelX;
-    if (!CallSetVariableNumber(movieView, state.xPath, targetX)) return false;
-    if (!CallSetVariableNumber(movieView, state.yPath, targetY)) return false;
+    if (!CallSetVariableNumber(movieView, xPath, targetX)) return false;
+    if (!CallSetVariableNumber(movieView, yPath, targetY)) return false;
     state.lastWrittenX = targetX;
     state.lastWrittenY = targetY;
     return true;
@@ -338,8 +301,8 @@ void UpdateFloatingMarkerReprojection(void* movieView,
     const float screenH = g_screenHeightPx.load(std::memory_order_relaxed);
     if (screenW < 1.0f || screenH < 1.0f) return;
 
-    for (auto& path : g_floatingMarkerPaths) {
-        ReprojectFloatingMarker(movieView, snap, path, screenW, screenH);
+    for (int i = 0; i < kMaxFloatingMarkers; ++i) {
+        ReprojectFloatingMarker(movieView, snap, i, g_floatingMarkers[i], screenW, screenH);
     }
 }
 std::atomic<bool> g_loggedScreenAnchoredMiss{false};

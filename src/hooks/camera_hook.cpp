@@ -269,16 +269,15 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
             std::memcpy(snapshot.trackedNiCamWorld, niCamWorldRot->entry, sizeof(snapshot.trackedNiCamWorld));
         }
 
-        // worldToCam is the renderer's view matrix in GRAPHICS convention.
-        // In local-yaw mode pre-multiply by headRotView so the renderer's
-        // effective view matches our niCamera.world modification. World-yaw mode
-        // must NOT write worldToCam: the split prOnlyView/yawOnly formula leaves
-        // it inconsistent with niCamera.world and a culling/lighting pass that
-        // reads worldToCam directly rendered a bright vertical band that tracked
-        // head yaw.
-        if (!worldYaw) {
-            worldToCam->PreMultiplyRotation(headRotView);
-        }
+        // We deliberately do NOT head-rotate worldToCam's rotation in either yaw
+        // mode. The main scene renders from niCamera.world (proven: world-yaw
+        // never wrote worldToCam yet tracks correctly), so leaving worldToCam's
+        // rotation clean keeps the view correct AND makes the engine project the
+        // floating quest markers through the CLEAN camera in both modes - which
+        // the HUD hook then reprojects exactly. The old local-yaw premultiply
+        // made the engine pre-track the markers (wrongly: yaw ~ok, pitch flew
+        // off), which couldn't be undone since we never saw the clean position.
+        // (worldToCam's translation is still adjusted below for 6DOF lean.)
 
         if (hasPosition) {
             NiPoint3* niCamWorldPos = reinterpret_cast<NiPoint3*>(
