@@ -6,11 +6,11 @@ This project includes or depends on the following third-party software.
 
 ## Ultimate ASI Loader
 
-- **Version:** v9.7.1 (commit 2155f2177733d673a3eb783141ceedd564a0a0e2)
+- **Version:** v9.7.2 (commit 2155f2177733d673a3eb783141ceedd564a0a0e2)
 - **License:** MIT
 - **Upstream:** https://github.com/ThirteenAG/Ultimate-ASI-Loader
 - **Usage:** Loads the mod's .asi plugin into Skyrim SE via the dinput8.dll proxy.
-- **Bundled:** yes. Bundled in release ZIP as fallback; fetched latest within range at install time.
+- **Bundled:** yes. Bundled in the release ZIP and used as the install-time source. `install.cmd` never fetches from upstream.
 
 Copyright (c) 2023 ThirteenAG
 
