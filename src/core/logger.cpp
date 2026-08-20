@@ -11,7 +11,8 @@ Logger& Logger::Instance() {
 }
 
 bool Logger::Initialize() {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    DWORD rotateError = 0;
+    std::unique_lock<std::mutex> lock(m_mutex);
 
     if (m_initialized) {
         return true;
@@ -21,6 +22,13 @@ bool Logger::Initialize() {
     if (logPath.empty()) {
         return false;
     }
+    // One generation is kept because a hook fault ends the session, and the
+    // user relaunches the game before they get round to sending the log.
+    std::string prevPath = GetModulePath("HeadTracking.prev.log");
+    if (!MoveFileExA(logPath.c_str(), prevPath.c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        rotateError = GetLastError();
+    }
+
     m_logFile.open(logPath, std::ios::out | std::ios::trunc);
     if (!m_logFile.is_open()) {
         return false;
@@ -38,6 +46,15 @@ bool Logger::Initialize() {
 #endif
 
     m_initialized = true;
+    lock.unlock();
+
+    // Reported only once the log is open, and only for a real failure: the
+    // truncating open above has already destroyed the generation the rotation
+    // existed to keep, so a silent failure loses the previous session.
+    if (rotateError != 0 && rotateError != ERROR_FILE_NOT_FOUND) {
+        Warning("Could not rotate HeadTracking.log to HeadTracking.prev.log (error %lu) - "
+                "the previous session's log was overwritten", rotateError);
+    }
     return true;
 }
 

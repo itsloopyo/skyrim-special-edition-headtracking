@@ -1,4 +1,23 @@
 # Changelog
+
+## [Unreleased]
+
+### Changed
+
+- Recentring is gone entirely: the `Home` / `Ctrl+Shift+T` hotkey, the
+  `RecenterKey` ini entry, the "View Recentered" notification, and the mod's own
+  centre. Your tracker owns the centre now. Set it there, with OpenTrack's Center
+  bind, the CENTER button in a phone app, or your headset's own centring, and the
+  mod applies what the tracker sends. Two centres in series was the problem: when
+  the view was off you could not tell which side was wrong, and switching trackers
+  meant centring in both.
+- the log records the first RAW tracker sample the receiver accepts, ahead of the enable and gameplay gates, so a "no head tracking" report can be told apart from a tracker that never reached the receiver. Previously the log ended at "Initialization complete" either way.
+- `HeadTracking.log` keeps one previous generation as `HeadTracking.prev.log`. It was already rewritten per launch, so a crash report was destroyed by the relaunch that came before the user sent it.
+
+- smoothing is now two user-configurable keys in `[Sensitivity]`: `LocalSmoothing` (default 0.0, tracker running on this PC) and `RemoteSmoothing` (default 0.15, tracker on a remote network device). The value is picked per connection from the packet source address and covers both rotation and position.
+- removed `[Sensitivity] RotationSmoothing` and `[Position] Smoothing`.
+- removed the hidden 0.15 baseline smoothing floor, so a local tracker now gets zero-latency, unsmoothed tracking by default.
+
 ## [0.1.0] - 2026-05-18
 
 ## [0.2.0] - 2026-08-03

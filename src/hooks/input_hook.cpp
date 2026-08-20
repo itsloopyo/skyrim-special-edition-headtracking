@@ -26,14 +26,12 @@ void RegisterBindings(const Config& config) {
     // suppresses them while Ctrl+Shift is held so a single keypress can't fire
     // two actions on layouts where a chord letter aliases a nav-cluster scancode.
     g_poller.AddHotkey(config.toggleKey,         NavGuarded([] { Mod::Instance().Toggle(); }));
-    g_poller.AddHotkey(config.recenterKey,       NavGuarded([] { Mod::Instance().Recenter(); }));
     g_poller.AddHotkey(config.positionToggleKey, NavGuarded([] { Mod::Instance().CycleDofMode(); }));
     g_poller.AddHotkey(config.yawModeKey,        NavGuarded([] { Mod::Instance().ToggleYawMode(); }));
 
     // Ctrl+Shift+<letter> chord alternatives per the CameraUnlock standard:
-    // T=Recenter, Y=Toggle, G=Position, H=4th toggle (yaw mode).
+    // Y=Toggle, G=Position, H=4th toggle (yaw mode).
     g_poller.AddHotkey('Y', ChordGuarded([] { Mod::Instance().Toggle(); }));
-    g_poller.AddHotkey('T', ChordGuarded([] { Mod::Instance().Recenter(); }));
     g_poller.AddHotkey('G', ChordGuarded([] { Mod::Instance().CycleDofMode(); }));
     g_poller.AddHotkey('H', ChordGuarded([] { Mod::Instance().ToggleYawMode(); }));
 
@@ -61,8 +59,8 @@ bool InstallInputHook() {
     }
     g_running.store(true);
 
-    Logger::Instance().Info("Input hook installed - Toggle: %s, Recenter: %s",
-        VirtualKeyToString(config.toggleKey), VirtualKeyToString(config.recenterKey));
+    Logger::Instance().Info("Input hook installed - Toggle: %s",
+        VirtualKeyToString(config.toggleKey));
 
     return true;
 }

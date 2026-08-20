@@ -8,7 +8,7 @@
 :: --- CONFIG BLOCK ---
 set "GAME_ID=skyrim-special-edition"
 set "MOD_DISPLAY_NAME=Skyrim SE Head Tracking"
-set "MOD_DLLS=SkyrimSEHeadTracking.asi HeadTracking.ini"
+set "MOD_DLLS=SkyrimSEHeadTracking.asi HeadTracking.ini HeadTracking.log HeadTracking.prev.log"
 set "MOD_INTERNAL_NAME=SkyrimSEHeadTracking"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=ASILoader"

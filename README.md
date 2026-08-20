@@ -62,7 +62,7 @@ No special hardware needed. OpenTrack's built-in **neuralnet tracker** uses any 
 2. Select your webcam in the tracker settings
 3. Set output to **UDP over network** (`127.0.0.1:4242`)
 4. Start tracking before launching the game
-5. Recenter in OpenTrack via its hotkey, and press **Home** in-game to recenter the mod as needed
+5. Centre in OpenTrack with its Center hotkey while you are looking straight at the screen. The mod applies what the tracker sends and keeps no centre of its own.
 
 ### Phone App Setup
 
@@ -81,7 +81,6 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
-| Recenter            | `Home`      | `Ctrl+Shift+T`  |
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
 | Toggle yaw mode     | `Page Down` | `Ctrl+Shift+H`  |
@@ -107,6 +106,8 @@ UDPPort=4242              ; UDP port for tracker data (1024-65535)
 YawMultiplier=1.0         ; Horizontal rotation sensitivity (0.1-5.0)
 PitchMultiplier=1.0       ; Vertical rotation sensitivity (0.1-5.0)
 RollMultiplier=1.0        ; Head tilt sensitivity (0.0-2.0)
+LocalSmoothing=0.0        ; Smoothing for a tracker on this PC (0.0-1.0)
+RemoteSmoothing=0.15      ; Smoothing for a tracker on the network (0.0-1.0)
 
 [Position]
 SensitivityX=1.0          ; Lateral position sensitivity (0.1-10.0)
@@ -116,7 +117,6 @@ LimitX=0.30               ; Max lateral offset in meters
 LimitY=0.20                ; Max vertical offset in meters
 LimitZ=0.40                ; Max forward offset in meters
 LimitZBack=0.10           ; Max backward offset (prevents camera clipping)
-Smoothing=0.15            ; Position smoothing (0.0-0.99)
 InvertX=true              ; Invert lateral axis
 InvertY=false             ; Invert vertical axis
 InvertZ=true              ; Invert depth axis
@@ -124,7 +124,6 @@ Enabled=true              ; Enable 6DOF (set false for rotation-only 3DOF)
 
 [Hotkeys]
 ToggleKey=0x23            ; End key (virtual key code in hex)
-RecenterKey=0x24          ; Home key
 PositionToggleKey=0x21    ; Page Up key
 YawModeKey=0x22           ; Page Down key - toggle world/local yaw
 
@@ -142,19 +141,24 @@ Delete the file to reset to defaults.
 
 - Verify `dinput8.dll` (ASI Loader) is in your Skyrim SE directory alongside `SkyrimSE.exe`
 - Check that `SkyrimSEHeadTracking.asi` is in the same directory
-- Check `HeadTracking.log` in the game folder for error messages
+- Check `HeadTracking.log` in the game folder for error messages. It is rewritten
+  on every launch; the previous session is kept as `HeadTracking.prev.log`, which
+  is the one to send after a crash
 
 **No tracking response:**
 
 - Ensure your tracker is running and outputting data
 - Verify the UDP port matches in both tracker and `HeadTracking.ini`
 - Press **End** to enable tracking if `AutoEnable` is off
-- Press **Home** to recenter if the view is offset
 - Check that your firewall isn't blocking UDP port 4242
+
+**View is off-centre:**
+
+- Centre in your tracker app: OpenTrack's Center bind, the CENTER button in a phone app, or your headset's own centring. The mod applies what the tracker sends and keeps no centre of its own, so the tracker is the only place to set one.
 
 **Jittery or unstable tracking:**
 
-- Increase filtering in your tracker software, or raise `Smoothing` in `HeadTracking.ini`
+- Increase filtering in your tracker software, or raise `LocalSmoothing` (tracker on this PC) / `RemoteSmoothing` (tracker on the network) in `HeadTracking.ini`
 - Reduce sensitivity multipliers in `HeadTracking.ini`
 - Improve lighting for webcam-based tracking
 - If you're streaming from a phone over WiFi, some jitter is expected; send via a wired hotspot or switch to webcam tracking for the smoothest signal
@@ -163,7 +167,7 @@ Delete the file to reset to defaults.
 
 - Invert the position axis in the `[Position]` section (`InvertX`, `InvertY`, `InvertZ`)
 - For rotation axes, flip the sign on the sensitivity multiplier (e.g. `PitchMultiplier=-1.0`)
-- Press **Home** after changing signs so the new orientation is taken as the neutral pose
+- Centre in your tracker app after changing signs so the new orientation is taken as the neutral pose
 
 **Yaw feels wrong when looking up or down at extreme angles:**
 
@@ -185,7 +189,7 @@ To remove manually, delete these files from your Skyrim SE directory:
 
 - `SkyrimSEHeadTracking.asi`
 - `HeadTracking.ini`
-- `HeadTracking.log` (if present)
+- `HeadTracking.log` and `HeadTracking.prev.log` (if present)
 - `dinput8.dll` (only if you also want to remove the ASI Loader)
 
 ## Building from Source

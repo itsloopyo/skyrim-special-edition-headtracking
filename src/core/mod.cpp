@@ -66,10 +66,10 @@ bool Mod::Initialize() {
     sensitivity.pitch = m_config.pitchMultiplier;
     sensitivity.roll = m_config.rollMultiplier;
     m_session.GetProcessor().SetSensitivity(sensitivity);
-    m_session.GetProcessor().SetSmoothing(m_config.rotationSmoothing);
 
-    Logger::Instance().Info("TrackingProcessor initialized with sensitivity: yaw=%.2f pitch=%.2f roll=%.2f smoothing=%.2f",
-                            sensitivity.yaw, sensitivity.pitch, sensitivity.roll, m_config.rotationSmoothing);
+    Logger::Instance().Info("TrackingProcessor initialized with sensitivity: yaw=%.2f pitch=%.2f roll=%.2f smoothing=local %.2f/remote %.2f",
+                            sensitivity.yaw, sensitivity.pitch, sensitivity.roll,
+                            m_config.localSmoothing, m_config.remoteSmoothing);
 
     // Initialize yaw mode from config
     m_worldSpaceYaw.store(m_config.worldSpaceYaw);
@@ -81,13 +81,30 @@ bool Mod::Initialize() {
     m_session.SetMode(m_config.positionEnabled
         ? cameraunlock::TrackingMode::RotationAndPosition
         : cameraunlock::TrackingMode::RotationOnly);
-    cameraunlock::PositionSettings posSettings(
-        m_config.positionSensitivityX, m_config.positionSensitivityY, m_config.positionSensitivityZ,
-        m_config.positionLimitX, m_config.positionLimitY, m_config.positionLimitZ, m_config.positionLimitZBack,
-        m_config.positionSmoothing,
-        m_config.positionInvertX, m_config.positionInvertY, m_config.positionInvertZ
-    );
+    // Assigned by name rather than through the positional constructor: the
+    // argument list is long enough that a field added or removed upstream would
+    // silently rebind the limits to the wrong slots.
+    cameraunlock::PositionSettings posSettings;
+    posSettings.sensitivity_x = m_config.positionSensitivityX;
+    posSettings.sensitivity_y = m_config.positionSensitivityY;
+    posSettings.sensitivity_z = m_config.positionSensitivityZ;
+    posSettings.limit_x       = m_config.positionLimitX;
+    posSettings.limit_y       = m_config.positionLimitY;
+    posSettings.limit_z       = m_config.positionLimitZ;
+    posSettings.limit_z_back  = m_config.positionLimitZBack;
+    posSettings.invert_x      = m_config.positionInvertX;
+    posSettings.invert_y      = m_config.positionInvertY;
+    posSettings.invert_z      = m_config.positionInvertZ;
     m_session.GetPositionProcessor().SetSettings(posSettings);
+
+    // Smoothing goes in after SetSettings, which would otherwise overwrite it.
+    // The session feeds both the rotation and the position processor and picks
+    // between the two values per connection from the receiver's
+    // IsRemoteConnection(), re-read on every Update().
+    static_assert(decltype(m_session)::kHasRemoteConnection,
+                  "receiver must expose IsRemoteConnection() or smoothing silently stays local");
+    m_session.SetLocalSmoothing(m_config.localSmoothing);
+    m_session.SetRemoteSmoothing(m_config.remoteSmoothing);
     Logger::Instance().Info("Position processor initialized (%s, sens=%.1f/%.1f/%.1f, limits=%.2f/%.2f/%.2f)",
                             m_session.GetMode() == cameraunlock::TrackingMode::RotationAndPosition ? "6DOF" : "3DOF rotation",
                             posSettings.sensitivity_x, posSettings.sensitivity_y, posSettings.sensitivity_z,
@@ -125,8 +142,7 @@ bool Mod::Initialize() {
                             m_cameraHookInstalled ? "OK" : "FAILED",
                             m_inputHookInstalled ? "OK" : "FAILED");
 
-    Logger::Instance().Info("Hotkeys: %s",
-        FormatHotkeyConfig(m_config.toggleKey, m_config.recenterKey).c_str());
+    Logger::Instance().Info("Hotkeys: %s=Toggle", VirtualKeyToString(m_config.toggleKey));
 
     // Crosshair overlay rides the camera hook - without it, there's nothing to
     // compensate, so we skip the overlay entirely if the camera hook didn't take.
@@ -144,9 +160,7 @@ bool Mod::Initialize() {
         ShowNotification(startupMsg.c_str());
 
         std::string hotkeyHint = VirtualKeyToString(m_config.toggleKey);
-        hotkeyHint += "=Toggle, ";
-        hotkeyHint += VirtualKeyToString(m_config.recenterKey);
-        hotkeyHint += "=Recenter";
+        hotkeyHint += "=Toggle";
         ShowNotification(hotkeyHint.c_str());
     }
 
@@ -312,17 +326,6 @@ void Mod::DumpMatrices() {
     L.Info("=== END MATRIX DUMP ===");
 }
 
-void Mod::Recenter() {
-    m_session.Recenter();
-    m_lastProcessTime = 0;
-
-    Logger::Instance().Info("View recentered");
-
-    if (m_config.showNotifications) {
-        ShowNotification("View Recentered");
-    }
-}
-
 void Mod::CycleDofMode() {
     const cameraunlock::TrackingMode mode = m_session.CycleMode();
 
@@ -362,6 +365,21 @@ void Mod::ToggleYawMode() {
     if (m_config.showNotifications) {
         ShowNotification(newValue ? "Yaw Mode: Horizon-locked" : "Yaw Mode: Camera-local");
     }
+}
+
+void Mod::LogFirstTrackerSample() {
+    if (m_loggedFirstSample) return;
+
+    // The RAW receiver sample, not the session output: centering, deadzone,
+    // smoothing and sensitivity can all render the processed value 0/0/0 on the
+    // settle frame, which reads as a tracker sending zeros.
+    float yaw = 0.0f, pitch = 0.0f, roll = 0.0f;
+    if (!m_udpReceiver.GetRotation(yaw, pitch, roll)) return;
+
+    m_loggedFirstSample = true;
+    Logger::Instance().Info("First tracker sample received: raw yaw=%.2f pitch=%.2f roll=%.2f (connection is %s)",
+                            yaw, pitch, roll,
+                            m_udpReceiver.IsRemoteConnection() ? "remote" : "local");
 }
 
 bool Mod::GetProcessedRotation(float& yaw, float& pitch, float& roll) {

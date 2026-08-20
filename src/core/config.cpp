@@ -23,7 +23,8 @@ void Config::Validate() {
     pitchMultiplier = std::clamp(pitchMultiplier, 0.1f, 5.0f);
     rollMultiplier = std::clamp(rollMultiplier, 0.0f, 2.0f);
 
-    rotationSmoothing = std::clamp(rotationSmoothing, 0.0f, 0.99f);
+    localSmoothing = std::clamp(localSmoothing, 0.0f, 1.0f);
+    remoteSmoothing = std::clamp(remoteSmoothing, 0.0f, 1.0f);
 
     positionSensitivityX = std::clamp(positionSensitivityX, 0.1f, 10.0f);
     positionSensitivityY = std::clamp(positionSensitivityY, 0.1f, 10.0f);
@@ -33,8 +34,6 @@ void Config::Validate() {
     positionLimitY = std::clamp(positionLimitY, 0.01f, 2.0f);
     positionLimitZ = std::clamp(positionLimitZ, 0.01f, 2.0f);
     positionLimitZBack = std::clamp(positionLimitZBack, 0.01f, 2.0f);
-
-    positionSmoothing = std::clamp(positionSmoothing, 0.0f, 0.99f);
 
     if (udpPort < 1024) {
         Logger::Instance().Warning("UDP port %d is in reserved range, using default %d",
@@ -55,6 +54,30 @@ inline float ParseFloat(const char* value) {
 
 inline int ParseInt(const char* value) {
     return static_cast<int>(strtol(value, nullptr, 0));
+}
+
+// Only reached when the retired key is actually present in the user's file:
+// inih only invokes the handler for keys that exist.
+//
+// Warned once per process rather than once per load: config is reloadable, and
+// repeating this on every reload buries it.
+//
+// The old value is deliberately NOT migrated into the new keys. Both retired
+// single-value keys carried a hidden 0.15 floor, so the number in an existing
+// config does not mean what it used to: copying it across would hand a local
+// user smoothing they never chose under the new semantics, and copying it into
+// only one of the two keys would be a guess about which connection they were on.
+void WarnRetiredSmoothingKey(const char* section, const char* key) {
+    static bool warned = false;
+    if (warned) return;
+    warned = true;
+    Logger::Instance().Warning(
+        "Config key [%s] %s has been retired and is IGNORED. Smoothing is now two "
+        "keys: LocalSmoothing (default 0, applies to a tracker on this machine) and "
+        "RemoteSmoothing (default 0.15, applies to a tracker on the network). The "
+        "old value is not migrated because the semantics changed - it carried a "
+        "hidden 0.15 floor that no longer exists. Set the two new keys.",
+        section, key);
 }
 
 } // namespace
@@ -78,10 +101,16 @@ int Config::ConfigHandler(void* user, const char* section, const char* name, con
     else if (MATCH("Sensitivity", "YawMultiplier"))   { config->yawMultiplier   = ParseFloat(value); }
     else if (MATCH("Sensitivity", "PitchMultiplier")) { config->pitchMultiplier = ParseFloat(value); }
     else if (MATCH("Sensitivity", "RollMultiplier"))  { config->rollMultiplier  = ParseFloat(value); }
-    else if (MATCH("Sensitivity", "RotationSmoothing")) { config->rotationSmoothing = ParseFloat(value); }
+    else if (MATCH("Sensitivity", "LocalSmoothing"))  { config->localSmoothing  = ParseFloat(value); }
+    else if (MATCH("Sensitivity", "RemoteSmoothing")) { config->remoteSmoothing = ParseFloat(value); }
+
+    // Retired keys, both replaced by LocalSmoothing/RemoteSmoothing above. Matched only
+    // so the user gets told they are dead instead of the values silently vanishing. The
+    // helper's one-shot flag is shared, so an INI carrying both still logs one line.
+    else if (MATCH("Sensitivity", "RotationSmoothing")) { WarnRetiredSmoothingKey("Sensitivity", "RotationSmoothing"); }
+    else if (MATCH("Position", "Smoothing"))            { WarnRetiredSmoothingKey("Position", "Smoothing"); }
 
     else if (MATCH("Hotkeys", "ToggleKey"))         { config->toggleKey         = ParseInt(value); }
-    else if (MATCH("Hotkeys", "RecenterKey"))       { config->recenterKey       = ParseInt(value); }
     else if (MATCH("Hotkeys", "PositionToggleKey")) { config->positionToggleKey = ParseInt(value); }
     else if (MATCH("Hotkeys", "YawModeKey"))        { config->yawModeKey        = ParseInt(value); }
 
@@ -92,7 +121,6 @@ int Config::ConfigHandler(void* user, const char* section, const char* name, con
     else if (MATCH("Position", "LimitY"))       { config->positionLimitY       = ParseFloat(value); }
     else if (MATCH("Position", "LimitZ"))       { config->positionLimitZ       = ParseFloat(value); }
     else if (MATCH("Position", "LimitZBack"))   { config->positionLimitZBack   = ParseFloat(value); }
-    else if (MATCH("Position", "Smoothing"))    { config->positionSmoothing    = ParseFloat(value); }
     else if (MATCH("Position", "InvertX"))      { config->positionInvertX      = ParseBool(value);  }
     else if (MATCH("Position", "InvertY"))      { config->positionInvertY      = ParseBool(value);  }
     else if (MATCH("Position", "InvertZ"))      { config->positionInvertZ      = ParseBool(value);  }
@@ -145,9 +173,14 @@ bool Config::Save(const char* path) const {
     file << "YawMultiplier=" << yawMultiplier << "\n";
     file << "PitchMultiplier=" << pitchMultiplier << "\n";
     file << "RollMultiplier=" << rollMultiplier << "\n";
-    file << "; Rotation smoothing (0.0 = snappy, internal 0.15 floor still applied;\n";
-    file << "; raise toward 1.0 for noisier trackers - costs perceived latency)\n";
-    file << "RotationSmoothing=" << rotationSmoothing << "\n\n";
+    file << "; Smoothing, applied to both rotation and position. The value is picked\n";
+    file << "; per connection from the packet source address.\n";
+    file << "; LocalSmoothing: tracker running on this machine (loopback).\n";
+    file << "; RemoteSmoothing: tracker on a remote network device (phone on WiFi).\n";
+    file << "; 0.0 = no smoothing, 1.0 = heavy. Raise for a noisier tracker - it\n";
+    file << "; costs perceived latency.\n";
+    file << "LocalSmoothing=" << localSmoothing << "\n";
+    file << "RemoteSmoothing=" << remoteSmoothing << "\n\n";
 
     file << "[Position]\n";
     file << "; Position tracking sensitivity (0.1-10.0, higher = more movement)\n";
@@ -160,8 +193,6 @@ bool Config::Save(const char* path) const {
     file << "LimitZ=" << positionLimitZ << "\n";
     file << "; Backward lean limit (prevents camera clipping through player model)\n";
     file << "LimitZBack=" << positionLimitZBack << "\n";
-    file << "; Smoothing factor (0.0 = none, 0.99 = maximum)\n";
-    file << "Smoothing=" << positionSmoothing << "\n";
     file << "; Invert position axes\n";
     file << "InvertX=" << (positionInvertX ? "true" : "false") << "\n";
     file << "InvertY=" << (positionInvertY ? "true" : "false") << "\n";
@@ -172,7 +203,6 @@ bool Config::Save(const char* path) const {
     file << "[Hotkeys]\n";
     file << "; Virtual key codes (hex)\n";
     file << "ToggleKey=0x" << std::hex << toggleKey << "    ; End - Enable/disable\n";
-    file << "RecenterKey=0x" << std::hex << recenterKey << "  ; Home - Recenter view\n";
     file << "PositionToggleKey=0x" << std::hex << positionToggleKey << " ; Page Up - Toggle position\n";
     file << "YawModeKey=0x" << std::hex << yawModeKey << "        ; Page Down - Toggle world/local yaw\n\n";
 

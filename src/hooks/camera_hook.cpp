@@ -123,6 +123,10 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
     // Call original - engine positions the camera and computes worldToCam
     g_originalUpdate(thisCamera);
 
+    // Ahead of every gate below: whether packets arrived has to be answerable
+    // from the log even when tracking is disabled or the player is in a menu.
+    Mod::Instance().LogFirstTrackerSample();
+
     if (!g_hookEnabled.load(std::memory_order_relaxed)) return;
     Mod& mod = Mod::Instance();
     if (!mod.IsEnabled()) return;

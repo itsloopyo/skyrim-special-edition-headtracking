@@ -17,7 +17,6 @@ public:
     void SetEnabled(bool enabled);
     void Toggle();
 
-    void Recenter();
     void CycleDofMode();
     void ToggleYawMode();
     bool IsWorldSpaceYaw() const { return m_worldSpaceYaw.load(); }
@@ -34,6 +33,11 @@ public:
 
     // Get processed (smoothed) rotation values for rendering
     bool GetProcessedRotation(float& yaw, float& pitch, float& roll);
+
+    // Latches the first tracker packet. Called from an ungated point in the
+    // camera hook: the answer to "did the tracker ever send anything" must not
+    // depend on tracking being enabled or the player being in gameplay.
+    void LogFirstTrackerSample();
 
     // Get processed position offset (meters)
     bool GetPositionOffset(float& x, float& y, float& z);
@@ -54,10 +58,10 @@ private:
 
     Config m_config;
     cameraunlock::UdpReceiver m_udpReceiver;
-    // Shared per-frame pipeline (interpolation, processing, 6DOF, mode cycling,
-    // stabilized auto-recenter). Updated at most once per cache window from
-    // GetProcessedRotation; hotkey-thread calls (Recenter/CycleDofMode) follow
-    // the session's documented threading model.
+    // Shared per-frame pipeline (interpolation, processing, 6DOF, mode cycling).
+    // Updated at most once per cache window from GetProcessedRotation;
+    // hotkey-thread calls (CycleDofMode) follow the session's documented
+    // threading model.
     cameraunlock::HeadTrackingSession<cameraunlock::UdpReceiver> m_session{m_udpReceiver};
 
     // Yaw mode: true = horizon-locked (world), false = camera-local
@@ -68,6 +72,8 @@ private:
 
     // Timing for frame-rate independent processing
     uint64_t m_lastProcessTime = 0;
+
+    bool m_loggedFirstSample = false;
 
     bool m_cameraHookInstalled = false;
     bool m_inputHookInstalled = false;

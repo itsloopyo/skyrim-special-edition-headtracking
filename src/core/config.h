@@ -13,15 +13,15 @@ struct Config {
     float pitchMultiplier = 1.0f;
     float rollMultiplier = 1.0f;
 
-    // Rotation smoothing factor. 0.0 = minimal (a 0.15 baseline floor is still
-    // applied internally - see cameraunlock-core SmoothingUtils). Push above
-    // 0.0 only if your tracker is jittery; pushing higher trades crispness for
-    // noise rejection.
-    float rotationSmoothing = 0.0f;
+    // Smoothing. The value used is picked per connection from the packet source
+    // address: a tracker on this machine (loopback) uses localSmoothing, a
+    // remote network device uses remoteSmoothing. Both cover rotation and
+    // position. 0.0 = none, 1.0 = heavy.
+    float localSmoothing = 0.0f;
+    float remoteSmoothing = 0.15f;
 
     // Hotkeys (Virtual Key codes)
     int toggleKey = DEFAULT_TOGGLE_KEY;
-    int recenterKey = DEFAULT_RECENTER_KEY;
     int positionToggleKey = DEFAULT_POSITION_TOGGLE_KEY;
     int yawModeKey = DEFAULT_YAW_MODE_KEY;
 
@@ -33,7 +33,6 @@ struct Config {
     float positionLimitY = 0.20f;
     float positionLimitZ = 0.40f;
     float positionLimitZBack = 0.10f;
-    float positionSmoothing = 0.15f;
     bool positionInvertX = true;
     bool positionInvertY = false;
     bool positionInvertZ = true;
