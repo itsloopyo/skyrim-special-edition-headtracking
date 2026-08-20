@@ -5,7 +5,7 @@
 namespace SkyrimHT {
 
 // Version info
-inline constexpr const char* VERSION = "0.2.0";
+inline constexpr const char* VERSION = "0.3.0";
 
 // Target game executable
 inline constexpr const char* GAME_EXE = "SkyrimSE.exe";
