@@ -28,6 +28,26 @@ $projectDir = Split-Path -Parent $scriptDir
 
 Import-Module (Join-Path $projectDir "cameraunlock-core/powershell/ReleaseWorkflow.psm1") -Force
 
+# cameraunlock-core is MIT under a different copyright holder (CameraUnlock)
+# than this mod's own LICENSE (itsloopyo), and it is compiled into the .asi, so
+# MIT wants its notice travelling with the binary in BOTH ZIPs. Defined here
+# rather than taken from the submodule on purpose: a helper added to core does
+# not reach this mod until its submodule pointer moves, and a licence
+# obligation cannot wait on that.
+function Copy-CoreLicense {
+    param([Parameter(Mandatory)][string]$StagingDir)
+
+    $src = Join-Path $projectDir "cameraunlock-core/LICENSE"
+    if (-not (Test-Path $src)) {
+        throw "cameraunlock-core/LICENSE not found at: $src. Run 'git submodule update --init' - the core licence must ship in every release ZIP."
+    }
+
+    $destDir = Join-Path $StagingDir "licenses"
+    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+    Copy-Item $src -Destination (Join-Path $destDir "cameraunlock-core-LICENSE.txt") -Force
+    Write-Host "  licenses/cameraunlock-core-LICENSE.txt" -ForegroundColor Green
+}
+
 $manifest = Get-Content (Join-Path $projectDir "manifest.json") -Raw | ConvertFrom-Json
 $version  = $manifest.version
 $modName  = 'SkyrimSEHeadTracking'
@@ -111,13 +131,18 @@ foreach ($f in @('dinput8.dll', 'LICENSE', 'README.md')) {
 # install.cmd expects shared/find-game.ps1 + GamePathDetection.psm1 + games.json
 Copy-SharedBundle -StagingDir $stagingInstaller
 
+# LICENSE and THIRD-PARTY-NOTICES.md carry the notices for everything linked
+# into the .asi, so a missing one is a licence violation rather than a cosmetic
+# gap. Throw instead of skipping quietly: a guarded copy turns that violation
+# into a green build.
 foreach ($doc in @("README.md", "CHANGELOG.md", "THIRD-PARTY-NOTICES.md", "LICENSE")) {
     $p = Join-Path $projectDir $doc
-    if (Test-Path $p) {
-        Copy-Item $p -Destination $stagingInstaller -Force
-        Write-Host "  $doc" -ForegroundColor Green
-    }
+    if (-not (Test-Path $p)) { throw "Required doc for installer ZIP not found: $p" }
+    Copy-Item $p -Destination $stagingInstaller -Force
+    Write-Host "  $doc" -ForegroundColor Green
 }
+
+Copy-CoreLicense -StagingDir $stagingInstaller
 
 $installerZip = Join-Path $releaseDir "$modName-v$version-installer.zip"
 if (Test-Path $installerZip) { Remove-Item $installerZip -Force }
@@ -159,6 +184,8 @@ foreach ($doc in @("README.md", "CHANGELOG.md", "THIRD-PARTY-NOTICES.md", "LICEN
     Copy-Item $p -Destination $stagingNexus -Force
     Write-Host "  $doc" -ForegroundColor Green
 }
+
+Copy-CoreLicense -StagingDir $stagingNexus
 
 $nexusZip = Join-Path $releaseDir "$modName-v$version-nexus.zip"
 if (Test-Path $nexusZip) { Remove-Item $nexusZip -Force }

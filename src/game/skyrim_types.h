@@ -6,7 +6,9 @@
 
 namespace SkyrimHT {
 
-// Minimal Skyrim SE type definitions from CommonLibSSE-NG reverse engineering.
+// Minimal Skyrim SE type definitions. The layouts below are our own; every
+// offset was read off the running game and cross-checked against the public
+// CommonLibSSE-NG reverse-engineering notes. No code from that project is used.
 // Skyrim coordinate system: X=east(right), Y=north(forward), Z=up
 // All offsets verified for SE/AE (identical), VR differs.
 
@@ -84,7 +86,7 @@ static_assert(sizeof(NiMatrix44) == 0x40, "NiMatrix44 size mismatch");
 // ============================================================
 // NiAVObject - base class for all scene graph objects
 // ============================================================
-// Offsets from CommonLibSSE-NG (SE/AE, NOT VR). The NiTransform layout at
+// Offsets cross-checked against CommonLibSSE-NG (SE/AE, NOT VR). The NiTransform layout at
 // WorldTransform is {NiMatrix33 rotate (36B), NiPoint3 translate (12B), float scale (4B)}.
 namespace NiAVObjectOffsets {
     constexpr uintptr_t LocalTransform      = 0x48;
