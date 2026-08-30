@@ -35,7 +35,7 @@ struct Config {
     float positionLimitZBack = 0.10f;
     bool positionInvertX = true;
     bool positionInvertY = false;
-    bool positionInvertZ = true;
+    bool positionInvertZ = false;
     bool positionEnabled = true;
 
     // General settings

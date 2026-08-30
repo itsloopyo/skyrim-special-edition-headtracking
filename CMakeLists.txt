@@ -94,3 +94,16 @@ if(WIN32)
         version
     )
 endif()
+
+# Behaviour lock for the 6DOF lean boundary, which is a pure function of the
+# processed offsets. A separate executable linking none of the hook or Windows
+# machinery, so `pixi run test` runs anywhere the mod builds, with no game
+# installed.
+option(SKYRIMHT_BUILD_TESTS "Build the lean-direction behaviour tests" ON)
+if(SKYRIMHT_BUILD_TESTS)
+    add_executable(skyrimht_lean_tests tests/lean_direction_tests.cpp)
+    target_include_directories(skyrimht_lean_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/cameraunlock-core/cpp/include
+    )
+endif()

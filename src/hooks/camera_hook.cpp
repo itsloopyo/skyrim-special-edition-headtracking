@@ -5,6 +5,7 @@
 #include "game/skyrim_types.h"
 #include "game/game_state.h"
 #include "core/rtti_utils.h"
+#include "camera_boundary.h"
 #include <cameraunlock/memory/pattern_scanner.h>
 
 namespace SkyrimHT {
@@ -234,13 +235,7 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
         bool hasPosition = mod.GetPositionOffset(posX, posY, posZ);
         NiPoint3 worldOffset(0.0f, 0.0f, 0.0f);
         if (hasPosition) {
-            constexpr float UNITS_PER_METER = 70.0f;
-            // Remap OT (X=right, Y=up, Z=fwd) -> Skyrim (X=right, Y=fwd, Z=up)
-            NiPoint3 localOffset(posZ, posY, posX);
-            worldOffset = *niCamWorldRot * localOffset;
-            worldOffset.x *= UNITS_PER_METER;
-            worldOffset.y *= UNITS_PER_METER;
-            worldOffset.z *= UNITS_PER_METER;
+            worldOffset = *niCamWorldRot * CameraLocalLeanOffset(posX, posY, posZ);
         }
         // Publish for the projectile hook to consume. Mark invalid when
         // no position offset is being applied this frame, so the projectile

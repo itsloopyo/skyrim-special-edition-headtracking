@@ -27,6 +27,9 @@ build = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
 # Build release configuration
 build-release = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 
+# Lean-direction behaviour lock. Needs no game install.
+test = { cmd = "build/Release/skyrimht_lean_tests.exe", depends-on = ["build-release"] }
+
 # Deploy release build to game directory
 install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
 

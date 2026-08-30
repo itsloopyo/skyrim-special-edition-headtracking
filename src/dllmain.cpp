@@ -89,7 +89,12 @@ unsigned __stdcall InitThread(void* lpParam) {
         Sleep(100);
         waitAttempts++;
         if (waitAttempts >= maxWaitAttempts) {
-            // Not the game process - exit silently
+            SkyrimHT::Logger::Instance().Initialize();
+            SkyrimHT::Logger::Instance().Error(
+                "%s was not loaded after %d ms - this process is not Skyrim SE, or the "
+                "executable has been renamed. Head tracking will not start.",
+                SkyrimHT::GAME_EXE, maxWaitAttempts * 100);
+            SkyrimHT::Logger::Instance().Shutdown();
             return 1;
         }
     }

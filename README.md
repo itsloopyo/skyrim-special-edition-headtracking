@@ -119,7 +119,7 @@ LimitZ=0.40                ; Max forward offset in meters
 LimitZBack=0.10           ; Max backward offset (prevents camera clipping)
 InvertX=true              ; Invert lateral axis
 InvertY=false             ; Invert vertical axis
-InvertZ=true              ; Invert depth axis
+InvertZ=false             ; Invert depth axis
 Enabled=true              ; Enable 6DOF (set false for rotation-only 3DOF)
 
 [Hotkeys]

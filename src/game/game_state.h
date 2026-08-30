@@ -2,17 +2,17 @@
 
 namespace SkyrimHT {
 
-// Gates head tracking to actual gameplay (not menus/loading/paused). Detection
-// is not yet implemented - it needs RTTI-based singleton discovery for
-// PlayerCamera and UI - so IsInGameplay() currently returns true unconditionally
-// and tracking runs in every camera state.
+// Gates head tracking to active gameplay. The test is the mouse capture:
+// Skyrim hides and clips the OS cursor while the player is playing, and a
+// menu that hands the pointer back shows it again. Reading that instead of an
+// engine singleton keeps the gate free of per-build addresses to re-derive
+// after a game patch.
 //
-// Reverse-engineered offsets for when that lands (SE/AE 1.6.x):
-//   UI singleton:  numPausesGame int32 @ +0x10C (>0 => pausing menu open),
-//                  isLoading bool @ +0x104
-//   PlayerCamera:  cameraStateId uint32 @ +0x58
-//   CameraStateId: FirstPerson=0 IronSights=4 ThirdPerson=8 Mount=9 (the
-//                  states head tracking should stay active in)
+// The foreground-window check is what keeps another application's mouse
+// capture from reading as gameplay, and it also rules out an alt-tabbed
+// session.
+//
+// Result is cached briefly, so callers on the render path may ask every frame.
 class GameState {
 public:
     static bool Initialize();
