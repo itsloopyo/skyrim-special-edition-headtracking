@@ -17,7 +17,7 @@ footage and screenshots" below.
 | Ultimate ASI Loader | v9.7.2 | MIT | Bundled verbatim in the installer ZIP |
 | MinHook | v1.3.4 (`c3fcafd`), modified | BSD-2-Clause | Compiled into `SkyrimSEHeadTracking.asi` |
 | inih | r55, modified | BSD-3-Clause | Compiled into `SkyrimSEHeadTracking.asi` |
-| cameraunlock-core | bf7d0ee00079cf2ee0f2323d45305527b75adc46 | MIT | Compiled into `SkyrimSEHeadTracking.asi` |
+| cameraunlock-core | 67a82e334bcf32979d17965eab4b0f37a48a6ad0 | MIT | Compiled into `SkyrimSEHeadTracking.asi` |
 | OpenTrack | n/a | ISC | Not bundled; UDP protocol interoperability only |
 | CommonLibSSE-NG | n/a | GPL-3.0-or-later | Neither bundled nor linked; credited as a reverse-engineering cross-reference |
 
@@ -224,7 +224,7 @@ not cover it and its notice has to travel with the binary in its own right. It
 ships as `licenses/cameraunlock-core-LICENSE.txt` in both release ZIPs and is
 reproduced here as well.
 
-- Pinned commit: `bf7d0ee00079cf2ee0f2323d45305527b75adc46`
+- Pinned commit: `67a82e334bcf32979d17965eab4b0f37a48a6ad0`
 
 ```
 MIT License
