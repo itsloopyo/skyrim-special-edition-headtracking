@@ -8,9 +8,12 @@ namespace SkyrimHT {
 inline constexpr float UNITS_PER_METER = 70.0f;
 
 // Maps a processed position offset (metres, X=right, Y=up, Z=depth) onto the
-// NiCamera node's local frame (X=forward, Y=up, Z=right), in Skyrim units.
-// Multiply the result by the camera's world rotation to get a world offset;
-// the scale factor commutes with that rotation.
+// NiCamera node's local axes, in Skyrim units. Multiply the result by the
+// camera's world rotation to get a world offset; the scale factor commutes
+// with that rotation.
+//
+// The axis order is the one the mod has always shipped: the node's first
+// component is the one depth drives, the second up, the third lateral.
 //
 // Depth is negated here, at the engine boundary, rather than through the
 // processor's InvertZ. The processor inverts BEFORE its asymmetric clamp of

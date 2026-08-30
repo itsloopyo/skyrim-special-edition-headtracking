@@ -32,22 +32,22 @@ void CheckNear(float actual, float expected, const char* what) {
     ++g_failures;
 }
 
-// The processor's z runs negative for a forward lean; NiCamera's local +x is
-// forward.
+// The processor's z runs negative for a forward lean, and depth drives the
+// node's first component.
 void ForwardLeanMovesCameraForward() {
     const SkyrimHT::NiPoint3 fwd = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.0f, -0.25f);
-    Check(fwd.x > 0.0f, "forward lean (processor z < 0) moves the camera forward");
+    Check(fwd.x > 0.0f, "forward lean (processor z < 0) drives depth positive");
 
     const SkyrimHT::NiPoint3 back = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.0f, 0.25f);
-    Check(back.x < 0.0f, "backward lean (processor z > 0) moves the camera back");
+    Check(back.x < 0.0f, "backward lean (processor z > 0) drives depth negative");
 }
 
-void UpAndRightMapStraightThrough() {
+void UpAndLateralMapStraightThrough() {
     const SkyrimHT::NiPoint3 up = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.1f, 0.0f);
-    CheckNear(up.y, 0.1f * SkyrimHT::UNITS_PER_METER, "up maps to camera-local +y");
+    CheckNear(up.y, 0.1f * SkyrimHT::UNITS_PER_METER, "up maps to the second component");
 
     const SkyrimHT::NiPoint3 right = SkyrimHT::CameraLocalLeanOffset(0.1f, 0.0f, 0.0f);
-    CheckNear(right.z, 0.1f * SkyrimHT::UNITS_PER_METER, "right maps to camera-local +z");
+    CheckNear(right.z, 0.1f * SkyrimHT::UNITS_PER_METER, "lateral maps to the third component");
 }
 
 // Drives the real processor with the shipped defaults, so a reintroduced
@@ -91,7 +91,7 @@ void LeanBudgetsAreNotReversed() {
 
 int main() {
     ForwardLeanMovesCameraForward();
-    UpAndRightMapStraightThrough();
+    UpAndLateralMapStraightThrough();
     LeanBudgetsAreNotReversed();
 
     if (g_failures != 0) {
