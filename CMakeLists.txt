@@ -75,6 +75,14 @@ set_target_properties(SkyrimSEHeadTracking PROPERTIES
 # Link cameraunlock core library
 target_link_libraries(SkyrimSEHeadTracking PRIVATE cameraunlock)
 
+option(SKYRIMHT_DEV_HOTKEYS "Build the diagnostic hotkeys (developer aid, not for release)" OFF)
+if(SKYRIMHT_DEV_HOTKEYS)
+    target_compile_definitions(SkyrimSEHeadTracking PRIVATE SKYRIMHT_DEV_HOTKEYS=1)
+    message(WARNING "SKYRIMHT_DEV_HOTKEYS is ON. This build registers F8 to cycle "
+                    "rotation-axis isolation and Insert to dump the camera matrices "
+                    "to the log. Do not ship it.")
+endif()
+
 # Include directories
 target_include_directories(SkyrimSEHeadTracking PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src

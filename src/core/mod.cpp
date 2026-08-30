@@ -89,7 +89,12 @@ bool Mod::Initialize() {
     posSettings.sensitivity_y = m_config.positionSensitivityY;
     posSettings.sensitivity_z = m_config.positionSensitivityZ;
     posSettings.limit_x       = m_config.positionLimitX;
+    // The clamp is [-limit_y_down, +limit_y] and limit_y_down carries its own
+    // default, so mirror the one configured vertical limit the way
+    // PositionSettings::Symmetric does. Left unset, raising LimitY widened the
+    // upward budget only and downward travel stayed pinned at 0.20m.
     posSettings.limit_y       = m_config.positionLimitY;
+    posSettings.limit_y_down  = m_config.positionLimitY;
     posSettings.limit_z       = m_config.positionLimitZ;
     posSettings.limit_z_back  = m_config.positionLimitZBack;
     posSettings.invert_x      = m_config.positionInvertX;

@@ -7,6 +7,12 @@
 #include <cameraunlock/input/hotkey_poller.h>
 #include <cameraunlock/input/chord_hotkeys.h>
 
+// Diagnostics for deriving camera behaviour on a new game build, not something
+// a player needs. Configure with -DSKYRIMHT_DEV_HOTKEYS=ON to re-arm them.
+#ifndef SKYRIMHT_DEV_HOTKEYS
+#define SKYRIMHT_DEV_HOTKEYS 0
+#endif
+
 namespace SkyrimHT {
 
 namespace {
@@ -35,9 +41,11 @@ void RegisterBindings(const Config& config) {
     g_poller.AddHotkey('G', ChordGuarded([] { Mod::Instance().CycleDofMode(); }));
     g_poller.AddHotkey('H', ChordGuarded([] { Mod::Instance().ToggleYawMode(); }));
 
+#if SKYRIMHT_DEV_HOTKEYS
     // Diagnostics: F8 cycles axis isolation, Insert dumps camera matrices.
     g_poller.AddHotkey(VK_F8,     NavGuarded([] { Mod::Instance().CycleAxisIsolation(); }));
     g_poller.AddHotkey(VK_INSERT, NavGuarded([] { Mod::Instance().DumpMatrices(); }));
+#endif
 }
 
 } // namespace
