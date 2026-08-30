@@ -151,7 +151,10 @@ LimitZ=0.40                ; Max forward offset in meters
 LimitZBack=0.10           ; Max backward offset (prevents camera clipping)
 InvertX=true              ; Invert lateral axis
 InvertY=false             ; Invert vertical axis
-InvertZ=false             ; Invert depth axis
+; InvertZ is for a tracker that sends depth backwards, not for a lean that
+; feels reversed. It is applied before the LimitZ / LimitZBack clamp, so
+; turning it on also swaps the travel budgets to 0.10m forward and 0.40m back.
+InvertZ=false
 Enabled=true              ; Enable 6DOF (set false for rotation-only 3DOF)
 
 [Hotkeys]
@@ -197,7 +200,8 @@ Delete the file to reset to defaults.
 
 **Wrong rotation axis (head rotates the view the wrong way):**
 
-- Invert the position axis in the `[Position]` section (`InvertX`, `InvertY`, `InvertZ`)
+- Flip `[Position] InvertX` or `InvertY` if a lateral or vertical lean moves the view the wrong way
+- `InvertZ` is for a tracker that sends depth backwards, not for a lean that feels reversed. It is applied before the `LimitZ` / `LimitZBack` clamp, so switching it on also swaps the travel budgets to 0.10m forward and 0.40m back
 - For rotation axes, flip the sign on the sensitivity multiplier (e.g. `PitchMultiplier=-1.0`)
 - Centre in your tracker app after changing signs so the new orientation is taken as the neutral pose
 
