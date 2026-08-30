@@ -18,9 +18,12 @@ namespace {
 //
 // Adding a new build (Bethesda patch, or a downgrade users run): add a NEW row,
 // never edit an existing one - users on the old build keep matching their row,
-// users on the new build match the new one, both from the same binary. Derive
-// the RVAs from headless Ghidra on that build's SkyrimSE.exe (the two functions
-// below), or from SKSE's Address Library .bin for that build.
+// users on the new build match the new one, both from the same binary.
+//
+// The shipped SkyrimSE.exe is SteamStub-packed (a `.bind` section; .text is
+// encrypted on disk), so a byte scan of the file finds nothing. Derive the RVAs
+// against the decrypted image: dump the running process's main module, or
+// unpack the exe first. SKSE's Address Library .bin for that build also works.
 struct BuildProfile {
     int major, minor, patch, build;
     uintptr_t updatePickData;     // CrosshairPickData raycast (crosshair override)
@@ -28,6 +31,8 @@ struct BuildProfile {
 };
 
 constexpr BuildProfile kSupported[] = {
+    // 1.7.104 (Steam, 2026-08-30)
+    { 1, 7, 104, 0, 0x409FD0, 0x7F9300 },
     // AE 1.6.1170
     { 1, 6, 1170, 0, 0x402C60, 0x7E46C0 },
 };

@@ -15,15 +15,18 @@ inline constexpr float UNITS_PER_METER = 70.0f;
 // The axis order is the one the mod has always shipped: the node's first
 // component is the one depth drives, the second up, the third lateral.
 //
-// Depth is negated here, at the engine boundary, rather than through the
-// processor's InvertZ. The processor inverts BEFORE its asymmetric clamp of
-// [-LimitZ, +LimitZBack], so flipping the sign there hands the generous 0.40m
-// allowance to the backward lean and the 0.10m anti-clipping allowance to the
-// forward one. Negative z is the forward lean throughout the library.
+// Depth maps straight through: a forward lean (negative z throughout the
+// library) drives the node's depth component negative.
+//
+// Whatever the depth sign has to be, it belongs here at the engine boundary and
+// never in the processor's InvertZ. The processor inverts BEFORE its asymmetric
+// clamp of [-LimitZ, +LimitZBack], so flipping the sign there hands the generous
+// 0.40m allowance to the backward lean and the 0.10m anti-clipping allowance to
+// the forward one.
 inline NiPoint3 CameraLocalLeanOffset(float posX, float posY, float posZ) {
-    return NiPoint3(-posZ * UNITS_PER_METER,
-                     posY * UNITS_PER_METER,
-                     posX * UNITS_PER_METER);
+    return NiPoint3(posZ * UNITS_PER_METER,
+                    posY * UNITS_PER_METER,
+                    posX * UNITS_PER_METER);
 }
 
 } // namespace SkyrimHT

@@ -8,6 +8,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- build profile for SkyrimSE.exe 1.7.104.0, the Steam build published on
+  2026-08-30. The crosshair override and the projectile lean offset were dormant
+  on it ("unsupported game build 1.7.104.0" in the log) because their two RVAs
+  had only ever been pinned for 1.6.1170. The 1.6.1170 profile is untouched and
+  still matches, so a player who stays on that build keeps both features.
+
+### Fixed
+
+- 6DOF depth ran backwards: leaning in pushed the camera out and pulling back
+  pulled it in. The depth sign is flipped at the engine boundary, so the
+  asymmetric budget stays attached to the physical direction - 0.40m of travel
+  leaning in, 0.10m pulling back to stop the camera clipping through the player.
+  Arrow launch origins follow the same offset, so they move with it.
+
 ### Changed
 
 - Recentring is gone entirely: the `Home` / `Ctrl+Shift+T` hotkey, the

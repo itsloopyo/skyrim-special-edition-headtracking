@@ -36,10 +36,10 @@ void CheckNear(float actual, float expected, const char* what) {
 // node's first component.
 void ForwardLeanMovesCameraForward() {
     const SkyrimHT::NiPoint3 fwd = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.0f, -0.25f);
-    Check(fwd.x > 0.0f, "forward lean (processor z < 0) drives depth positive");
+    Check(fwd.x < 0.0f, "forward lean (processor z < 0) drives depth negative");
 
     const SkyrimHT::NiPoint3 back = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.0f, 0.25f);
-    Check(back.x < 0.0f, "backward lean (processor z > 0) drives depth negative");
+    Check(back.x > 0.0f, "backward lean (processor z > 0) drives depth positive");
 }
 
 void UpAndLateralMapStraightThrough() {
@@ -81,9 +81,9 @@ float SaturatedForwardUnits(float rawZ) {
 void LeanBudgetsAreNotReversed() {
     // A metre of physical lean either way: far past both limits, so the output
     // is whichever budget that direction actually got.
-    CheckNear(SaturatedForwardUnits(-1.0f), 0.40f * SkyrimHT::UNITS_PER_METER,
+    CheckNear(SaturatedForwardUnits(-1.0f), -0.40f * SkyrimHT::UNITS_PER_METER,
               "forward lean gets the 0.40m budget");
-    CheckNear(SaturatedForwardUnits(1.0f), -0.10f * SkyrimHT::UNITS_PER_METER,
+    CheckNear(SaturatedForwardUnits(1.0f), 0.10f * SkyrimHT::UNITS_PER_METER,
               "backward lean gets the 0.10m budget");
 }
 
