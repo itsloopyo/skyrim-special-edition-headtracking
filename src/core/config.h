@@ -2,6 +2,9 @@
 
 #include <cstdint>
 
+#include <cameraunlock/data/position_settings.h>
+#include <cameraunlock/math/smoothing_utils.h>
+
 namespace SkyrimHT {
 
 struct Config {
@@ -17,8 +20,8 @@ struct Config {
     // address: a tracker on this machine (loopback) uses localSmoothing, a
     // remote network device uses remoteSmoothing. Both cover rotation and
     // position. 0.0 = none, 1.0 = heavy.
-    float localSmoothing = 0.0f;
-    float remoteSmoothing = 0.15f;
+    float localSmoothing = static_cast<float>(cameraunlock::math::kDefaultLocalSmoothing);
+    float remoteSmoothing = static_cast<float>(cameraunlock::math::kDefaultRemoteSmoothing);
 
     // Hotkeys (Virtual Key codes)
     int toggleKey = DEFAULT_TOGGLE_KEY;
@@ -29,10 +32,10 @@ struct Config {
     float positionSensitivityX = 1.0f;
     float positionSensitivityY = 1.0f;
     float positionSensitivityZ = 1.0f;
-    float positionLimitX = 0.30f;
-    float positionLimitY = 0.20f;
-    float positionLimitZ = 0.40f;
-    float positionLimitZBack = 0.10f;
+    float positionLimitX = cameraunlock::PositionSettings{}.limit_x;
+    float positionLimitY = cameraunlock::PositionSettings{}.limit_y;
+    float positionLimitZ = cameraunlock::PositionSettings{}.limit_z;
+    float positionLimitZBack = cameraunlock::PositionSettings{}.limit_z_back;
     bool positionInvertX = true;
     bool positionInvertY = false;
     bool positionInvertZ = false;
