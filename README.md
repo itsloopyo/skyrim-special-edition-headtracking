@@ -278,8 +278,8 @@ MIT. See [LICENSE](LICENSE).
 - [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) - ASI plugin loading
 - [MinHook](https://github.com/TsudaKageyu/minhook) - API hooking library
 - [inih](https://github.com/benhoyt/inih) - INI file parser
-- [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR) - the published reverse-engineering notes this mod's engine offsets were cross-checked against. None of its code is used or linked here; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
-- [SKSE](https://skse.silverlock.org/) and the Address Library (meh321) - the wider Skyrim reverse-engineering effort that makes mods like this possible
+- [CommonLibSSE-NG](https://github.com/alandtse/CommonLibVR) - the published engine notes this mod's offsets were cross-checked against. None of its code is used or linked here; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+- [SKSE](https://skse.silverlock.org/) and the Address Library (meh321) - the wider Skyrim modding effort that makes mods like this possible
 - [cameraunlock-core](https://github.com/itsloopyo/cameraunlock-core) - shared head tracking pipeline
 
 This is an unofficial, fan-made modification. It is not affiliated with,

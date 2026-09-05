@@ -8,7 +8,7 @@ namespace SkyrimHT {
 
 // Minimal Skyrim SE type definitions. The layouts below are our own; every
 // offset was read off the running game and cross-checked against the public
-// CommonLibSSE-NG reverse-engineering notes. No code from that project is used.
+// CommonLibSSE-NG notes. No code from that project is used.
 // Skyrim coordinate system: X=east(right), Y=north(forward), Z=up
 // All offsets verified for SE/AE (identical), VR differs.
 

@@ -178,8 +178,8 @@ ScreenAnchoredPathState g_screenAnchoredPaths[] = {
         "HUDMovieBaseInstance.RolloverText._y",
         false, false, 0.0, 0.0,
     },
-    // The activate-glyph TextField, discovered in the decompiled hudmenu.swf
-    // as "RolloverButton_tf" (referenced near RefreshActivateButtonArt). Same
+    // The activate-glyph TextField is named "RolloverButton_tf" in hudmenu.swf,
+    // referenced near RefreshActivateButtonArt. Same
     // compensation pattern as RolloverText - read current, undo last delta,
     // write base + new delta.
     {
