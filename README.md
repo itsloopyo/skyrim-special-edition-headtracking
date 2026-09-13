@@ -8,6 +8,7 @@ An unofficial head tracking mod for Skyrim Special Edition that moves the view w
 
 - **Decoupled look and aim** - head tracking moves the view; the game's aim stays on your mouse or controller
 - **6DOF positional tracking** - lean and peek with head position
+- **Works with any OpenTrack compatible tracker** - free options available for PC, iOS and Android
 
 ## Requirements
 
@@ -16,6 +17,13 @@ An unofficial head tracking mod for Skyrim Special Edition that moves the view w
 - Windows 10 / 11 (64-bit)
 
 ## Installation
+
+### Lopari
+
+Download [Lopari](https://lopari.app), choose **Skyrim Special Edition**, and click
+**Play with head tracking**.
+
+### Standalone Installer
 
 1. Download the latest `SkyrimSEHeadTracking-v<version>-installer.zip` from the [Releases page](https://github.com/itsloopyo/skyrim-special-edition-headtracking/releases)
 2. Extract the ZIP anywhere
