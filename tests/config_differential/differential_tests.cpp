@@ -36,9 +36,11 @@
 // v0.2.0 shipped one file and v0.3.0 another, in the installer ZIP's plugins\ and as the launcher
 // seed from v0.1.1 on; the Nexus ZIPs carry none), the two versions committed since v0.3.0, the
 // file v0.3.0 writes at first launch when there is none (extracted once into inputs/ with
-// --first-run), core's corpus over the v0.3.0 file, the v0.3.0 file with all three hotkeys on
-// each code from 0x01 to 0xFE, the v0.3.0 file with a number that is not finite on each float it
-// reads, and a legacy file another program holds open with no sharing.
+// --first-run), the file v0.1.0, v0.1.1 and v0.2.0 write at first launch (one writer, extracted
+// once from v0.1.0's sources, as frozen.tsv records), core's corpus over the v0.3.0 file, the
+// v0.3.0 file with all three hotkeys on each code from 0x01 to 0xFE, the v0.3.0 file with a
+// number that is not finite on each float it reads, and a legacy file another program holds open
+// with no sharing.
 
 #include "core/config.h"
 #include "legacy_config/legacy_config.h"
@@ -1125,14 +1127,15 @@ int main(int argc, char** argv) {
             {"shipped, v0.3.0", shipped},
             {"committed, b285051", ReadInput("committed-b285051.ini")},
             {"committed, 3040cc0", ReadInput("committed-3040cc0.ini")},
+            {"first run, v0.1.0 to v0.2.0", ReadInput("first-run-v0.1.0.ini")},
             {"first run, v0.3.0", firstRun},
         };
         for (const auto& [name, bytes] : inputs) RunInput(root, name, bytes, tally);
         TestUnopenableFile(root, shipped, tally);
 
         // Fresh equals upgrade: every file a release shipped, each version committed since and
-        // the one v0.3.0 wrote at first launch convert, over Defaults.ini at the built-in values,
-        // to the committed file, as no file is created as it.
+        // the ones every release wrote at first launch convert, over Defaults.ini at the built-in
+        // values, to the committed file, as no file is created as it.
         for (const auto& [name, bytes] : inputs) {
             if (!bytes || bytes->empty()) continue;
             const Folders f = NextFolders(root);

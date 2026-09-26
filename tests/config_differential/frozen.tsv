@@ -29,11 +29,14 @@ tests/config_differential/inputs/shipped-v0.3.0.ini	fd8a686d93836e53e5fa1a6bd8cf
 tests/config_differential/inputs/committed-b285051.ini	ffb5c066094f8f2fd38e7c062e7e5e3d607c8229a870f45546fee74204b3364e	b285051:HeadTracking.ini, committed after v0.3.0
 tests/config_differential/inputs/committed-3040cc0.ini	1968686e5629277e8ae8cb9fc336012798b0562f3e1e1efae48bbc328bb1b778	3040cc0:HeadTracking.ini, committed after v0.3.0 and the file at 9196981
 tests/config_differential/inputs/first-run-v0.3.0.ini	f59be5ee40d1f3287025b1e359a5d08ee051a59632710a6746a78c397a220846	the first-run output of v0.3.0, extracted once from the oracle with --first-run
+tests/config_differential/inputs/first-run-v0.1.0.ini	7a7e083f29daab08ebf9686af1fb694b0b9ad9cec09e2193f94dffe507d081b8	the first-run output of v0.1.0, v0.1.1 and v0.2.0, which share config.cpp and config.h and create the file the same way in Mod::LoadConfig; extracted once by compiling v0.1.0's config.cpp, config.h, constants.h, pch.h, logger and path_utils with extern/ini.c and running Load, SetDefaults and Save on a missing file, as Mod::LoadConfig does
 v0.3.0:HeadTracking.ini	fd8a686d93836e53e5fa1a6bd8cfe012903f89bd68e7c2ee3b5dcdfc9ac24eab	published source
 v0.3.0:src/core/config.h	474b396bf680e9cd1914f3e005dd99b3ff1b2d866ae8de9f9c1924f8a80f0c8b	published source
 v0.3.0:src/core/config.cpp	5f823f7f29ff164928be3222cdbc37e6247e4a120e50dda283a96c62d2a18f3d	published source
 v0.3.0:src/core/mod.cpp	51748e04000000c9a3c00bef7c9dffbf3e732380a95329c4921797b66303444b	published source
 v0.3.0:src/hooks/input_hook.cpp	8266378596402daeda7445ecfff8ced43f95a91de2cf8545f892bf6e110ff35f	published source
+v0.1.0:src/core/config.cpp	e44ba316f1b9019b6d79f10448585d47144d981eba08ea7f55c1b4beb3ceddcc	published source; the same bytes at v0.1.1 and v0.2.0
+v0.1.0:src/core/config.h	e7315b5613d52150e58d6a98425c22cc5fae1d5e4a319e2262d925e59403cf33	published source; the same bytes at v0.1.1 and v0.2.0
 9196981:src/core/config.h	4c1fb546a9bb458dfed29ace04ddeb0d93bdb27d5b920c98b3378276ca00057b	the reader the import was frozen from, and the startup code and hotkey registration beside it
 9196981:src/core/config.cpp	5f823f7f29ff164928be3222cdbc37e6247e4a120e50dda283a96c62d2a18f3d	the reader the import was frozen from, and the startup code and hotkey registration beside it
 9196981:src/core/mod.cpp	51883b935e0dc5d00d6d163680d01eb6b92dcfdee16438410e22102253712a98	the reader the import was frozen from, and the startup code and hotkey registration beside it
