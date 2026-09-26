@@ -24,37 +24,6 @@
 - The installer no longer copies a config into the game folder. Every earlier installer copied its `HeadTracking.ini` over yours on each install, and `uninstall.cmd` deleted it; now the mod creates `CameraUnlock.ini` itself and the uninstall leaves `CameraUnlock.ini` and `HeadTracking.ini` in place.
 - Leaning down is bounded by `LimitY`, as leaning up is (6d25db0). 0.3.0 held the downward lean at 0.20 m whatever `LimitY` said, so with `LimitY` changed from 0.20 the downward travel changes to match.
 - With no `HeadTracking.ini`, or one with no `InvertZ` line, depth now runs the fixed way described under Fixed (b285051). 0.3.0 took `InvertZ=true` there.
-
-### Removed
-
-- The sensitivity, scale, deadzone, response curve and axis inversion settings: `[Sensitivity] YawMultiplier`, `PitchMultiplier` and `RollMultiplier`, and `[Position] SensitivityX`, `SensitivityY`, `SensitivityZ`, `InvertX`, `InvertY` and `InvertZ`. Set these in your tracker app instead. The x inversion every earlier version shipped switched on (`InvertX=true`) is now part of how the mod converts the tracker's axes to the game's, so leaning left and right goes the same way it did.
-- Every file 0.1.0 to 0.3.0 shipped or wrote set `InvertZ=true`, which is what made depth run backwards. The import drops it like any other inversion, so after updating depth runs the fixed way described under Fixed, whatever your old file said. The other sensitivity and inversion settings shipped at the same defaults in every copy (installer, launcher seed and first-run file), and with those at their shipped defaults the camera moves as it did before.
-- `[Crosshair] Show`. The game's crosshair now always moves to follow your aim while head tracking is on. `Show=false` in an old file is not carried over.
-
-### Added
-
-- A setting set to `default` in `CameraUnlock.ini` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
-- `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
-- When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that.
-
-### Added
-
-- build profile for SkyrimSE.exe 1.7.104.0, the Steam build published on
-  2026-08-30. The crosshair override and the projectile lean offset were dormant
-  on it ("unsupported game build 1.7.104.0" in the log) because their two RVAs
-  had only ever been pinned for 1.6.1170. The 1.6.1170 profile is untouched and
-  still matches, so a player who stays on that build keeps both features.
-
-### Fixed
-
-- 6DOF depth ran backwards: leaning in pushed the camera out and pulling back
-  pulled it in. The depth sign is flipped at the engine boundary, so the
-  asymmetric budget stays attached to the physical direction - 0.40m of travel
-  leaning in, 0.10m pulling back to stop the camera clipping through the player.
-  Arrow launch origins follow the same offset, so they move with it.
-
-### Changed
-
 - Recentring is gone entirely: the `Home` / `Ctrl+Shift+T` hotkey, the
   `RecenterKey` ini entry, the "View Recentered" notification, and the mod's own
   centre. Your tracker owns the centre now. Set it there, with OpenTrack's Center
@@ -68,6 +37,31 @@
 - smoothing is now two user-configurable keys in `[Sensitivity]`: `LocalSmoothing` (default 0.0, tracker running on this PC) and `RemoteSmoothing` (default 0.15, tracker on a remote network device). The value is picked per connection from the packet source address and covers both rotation and position.
 - removed `[Sensitivity] RotationSmoothing` and `[Position] Smoothing`.
 - removed the hidden 0.15 baseline smoothing floor, so a local tracker now gets zero-latency, unsmoothed tracking by default.
+
+### Removed
+
+- The sensitivity, scale, deadzone, response curve and axis inversion settings: `[Sensitivity] YawMultiplier`, `PitchMultiplier` and `RollMultiplier`, and `[Position] SensitivityX`, `SensitivityY`, `SensitivityZ`, `InvertX`, `InvertY` and `InvertZ`. Set these in your tracker app instead. The x inversion every earlier version shipped switched on (`InvertX=true`) is now part of how the mod converts the tracker's axes to the game's, so leaning left and right goes the same way it did.
+- Every file 0.1.0 to 0.3.0 shipped or wrote set `InvertZ=true`, which is what made depth run backwards. The import drops it like any other inversion, so after updating depth runs the fixed way described under Fixed, whatever your old file said. The other sensitivity and inversion settings shipped at the same defaults in every copy (installer, launcher seed and first-run file), and with those at their shipped defaults the camera moves as it did before.
+- `[Crosshair] Show`. The game's crosshair now always moves to follow your aim while head tracking is on. `Show=false` in an old file is not carried over.
+
+### Added
+
+- A setting set to `default` in `CameraUnlock.ini` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+- `Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
+- When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that.
+- build profile for SkyrimSE.exe 1.7.104.0, the Steam build published on
+  2026-08-30. The crosshair override and the projectile lean offset were dormant
+  on it ("unsupported game build 1.7.104.0" in the log) because their two RVAs
+  had only ever been pinned for 1.6.1170. The 1.6.1170 profile is untouched and
+  still matches, so a player who stays on that build keeps both features.
+
+### Fixed
+
+- 6DOF depth ran backwards: leaning in pushed the camera out and pulling back
+  pulled it in. The depth sign is flipped at the engine boundary, so the
+  asymmetric budget stays attached to the physical direction - 0.40m of travel
+  leaning in, 0.10m pulling back to stop the camera clipping through the player.
+  Arrow launch origins follow the same offset, so they move with it.
 
 ## [0.1.0] - 2026-05-18
 
