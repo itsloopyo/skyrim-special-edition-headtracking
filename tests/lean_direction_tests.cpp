@@ -6,11 +6,16 @@
 // lean was cut off at the 0.10m backward allowance and a backward lean was
 // handed the 0.40m forward one. Nothing in the render path notices; the camera
 // just refuses to lean in.
+//
+// It also holds the lateral negation CameraLocalLeanOffset does now to the
+// [Position] InvertX=true every build before the canonical config shipped,
+// which the processor applied: the two give the same lean bit for bit.
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 
-#include "core/constants.h"
 #include "core/config.h"
 #include "hooks/camera_boundary.h"
 
@@ -32,6 +37,12 @@ void CheckNear(float actual, float expected, const char* what) {
     ++g_failures;
 }
 
+uint32_t Bits(float f) {
+    uint32_t b;
+    std::memcpy(&b, &f, sizeof(b));
+    return b;
+}
+
 // The processor's z runs negative for a forward lean, and depth drives the
 // node's first component.
 void ForwardLeanMovesCameraForward() {
@@ -42,39 +53,30 @@ void ForwardLeanMovesCameraForward() {
     Check(back.x > 0.0f, "backward lean (processor z > 0) drives depth positive");
 }
 
-void UpAndLateralMapStraightThrough() {
+void UpMapsStraightThroughAndLateralIsNegated() {
     const SkyrimHT::NiPoint3 up = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.1f, 0.0f);
     CheckNear(up.y, 0.1f * SkyrimHT::UNITS_PER_METER, "up maps to the second component");
 
     const SkyrimHT::NiPoint3 right = SkyrimHT::CameraLocalLeanOffset(0.1f, 0.0f, 0.0f);
-    CheckNear(right.z, 0.1f * SkyrimHT::UNITS_PER_METER, "lateral maps to the third component");
+    CheckNear(right.z, -0.1f * SkyrimHT::UNITS_PER_METER, "lateral maps, negated, to the third component");
 }
 
-// Drives the real processor with the shipped defaults, so a reintroduced
-// InvertZ or a swapped pair of limits fails here rather than in the game.
-cameraunlock::PositionSettings ShippedSettings() {
-    const SkyrimHT::Config config;
-    cameraunlock::PositionSettings s;
-    s.sensitivity_x = config.positionSensitivityX;
-    s.sensitivity_y = config.positionSensitivityY;
-    s.sensitivity_z = config.positionSensitivityZ;
-    s.limit_x       = config.positionLimitX;
-    s.limit_y       = config.positionLimitY;
-    s.limit_z       = config.positionLimitZ;
-    s.limit_z_back  = config.positionLimitZBack;
-    s.invert_x      = config.positionInvertX;
-    s.invert_y      = config.positionInvertY;
-    s.invert_z      = config.positionInvertZ;
-    return s;
+// Drives the real processor with the settings this build hands it, so a
+// reintroduced InvertZ or a swapped pair of limits fails here rather than in the game.
+cameraunlock::PositionSettings RuntimeSettings() {
+    return SkyrimHT::MakeConfigTable().defaults().position;
+}
+
+cameraunlock::math::Vec3 Settle(const cameraunlock::PositionSettings& settings, const cameraunlock::PositionData& raw) {
+    cameraunlock::PositionProcessor processor;
+    processor.SetSettings(settings);
+    // Two ticks so the exponential smoothing has settled on the clamped value.
+    processor.Process(raw, cameraunlock::math::Quat4::Identity(), 1.0f);
+    return processor.Process(raw, cameraunlock::math::Quat4::Identity(), 1.0f);
 }
 
 float SaturatedForwardUnits(float rawZ) {
-    cameraunlock::PositionProcessor processor;
-    processor.SetSettings(ShippedSettings());
-    const cameraunlock::PositionData raw(0.0f, 0.0f, rawZ);
-    // Two ticks so the exponential smoothing has settled on the clamped value.
-    cameraunlock::math::Vec3 out = processor.Process(raw, cameraunlock::math::Quat4::Identity(), 1.0f);
-    out = processor.Process(raw, cameraunlock::math::Quat4::Identity(), 1.0f);
+    const cameraunlock::math::Vec3 out = Settle(RuntimeSettings(), cameraunlock::PositionData(0.0f, 0.0f, rawZ));
     return SkyrimHT::CameraLocalLeanOffset(out.x, out.y, out.z).x;
 }
 
@@ -87,12 +89,37 @@ void LeanBudgetsAreNotReversed() {
               "backward lean gets the 0.10m budget");
 }
 
+// The same raw lateral leans through the processor with InvertX on and the old
+// boundary, and through this build's settings and boundary, over several
+// frames so the smoothing and both clamps take part.
+void LateralNegationMatchesTheShippedInvertX() {
+    cameraunlock::PositionSettings shipped = RuntimeSettings();
+    shipped.invert_x = true;
+    cameraunlock::PositionProcessor before;
+    before.SetSettings(shipped);
+    cameraunlock::PositionProcessor after;
+    after.SetSettings(RuntimeSettings());
+    Check(!RuntimeSettings().invert_x, "this build hands the processor no x inversion");
+
+    const float leans[] = {0.05f, -0.12f, 0.31f, -0.9f, 0.0f, 0.2999f, -0.3001f, 0.17f};
+    for (float lean : leans) {
+        const cameraunlock::PositionData raw(lean, 0.02f, -0.1f);
+        const cameraunlock::math::Vec3 a = before.Process(raw, cameraunlock::math::Quat4::Identity(), 0.016f);
+        const cameraunlock::math::Vec3 b = after.Process(raw, cameraunlock::math::Quat4::Identity(), 0.016f);
+        // The pre-canonical boundary took x straight through.
+        const float shippedLateral = a.x * SkyrimHT::UNITS_PER_METER;
+        const float lateral = SkyrimHT::CameraLocalLeanOffset(b.x, b.y, b.z).z;
+        Check(Bits(shippedLateral) == Bits(lateral), "the lateral lean matches the shipped InvertX bit for bit");
+    }
+}
+
 } // namespace
 
 int main() {
     ForwardLeanMovesCameraForward();
-    UpAndLateralMapStraightThrough();
+    UpMapsStraightThroughAndLateralIsNegated();
     LeanBudgetsAreNotReversed();
+    LateralNegationMatchesTheShippedInvertX();
 
     if (g_failures != 0) {
         std::printf("%d check(s) failed\n", g_failures);

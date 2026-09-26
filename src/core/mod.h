@@ -1,8 +1,12 @@
 #pragma once
 
 #include "config.h"
+#include <cameraunlock/config/config_owner.h>
 #include <cameraunlock/protocol/udp_receiver.h>
 #include <cameraunlock/tracking/head_tracking_session.h>
+
+#include <functional>
+#include <optional>
 
 namespace SkyrimHT {
 
@@ -50,6 +54,9 @@ private:
     ~Mod() = default;
 
     bool LoadConfig();
+    // Applies `change` to CameraUnlock.ini through the owner. Called after the new
+    // value is already running; a save that fails is logged and the session keeps it.
+    void SaveConfig(const std::function<void(Config&)>& change);
     bool InitializeHooks();
     void ShutdownHooks();
 
@@ -57,6 +64,10 @@ private:
     std::atomic<bool> m_initialized{false};
 
     Config m_config;
+    // Built on the init thread by LoadConfig, before the hotkeys start; the
+    // hotkey thread saves through it afterwards. Empty when the module folder
+    // could not be read, and then nothing is saved.
+    std::optional<cameraunlock::config::ConfigOwner<Config>> m_configOwner;
     cameraunlock::UdpReceiver m_udpReceiver;
     // Shared per-frame pipeline (interpolation, processing, 6DOF, mode cycling).
     // Updated at most once per cache window from GetProcessedRotation;

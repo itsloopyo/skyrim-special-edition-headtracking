@@ -18,6 +18,11 @@ inline constexpr float UNITS_PER_METER = 70.0f;
 // Depth maps straight through: a forward lean (negative z throughout the
 // library) drives the node's depth component negative.
 //
+// Lateral is negated. Every build before the canonical config did the same
+// through [Position] InvertX=true, which it shipped on; that ran ahead of the
+// processor's clamp and smoothing, and the x limit and the smoothing are
+// symmetric in x, so negating here after them gives the same lean bit for bit.
+//
 // Whatever the depth sign has to be, it belongs here at the engine boundary and
 // never in the processor's InvertZ. The processor inverts BEFORE its asymmetric
 // clamp of [-LimitZ, +LimitZBack], so flipping the sign there hands the generous
@@ -26,7 +31,7 @@ inline constexpr float UNITS_PER_METER = 70.0f;
 inline NiPoint3 CameraLocalLeanOffset(float posX, float posY, float posZ) {
     return NiPoint3(posZ * UNITS_PER_METER,
                     posY * UNITS_PER_METER,
-                    posX * UNITS_PER_METER);
+                    -posX * UNITS_PER_METER);
 }
 
 } // namespace SkyrimHT

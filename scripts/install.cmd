@@ -7,7 +7,11 @@
 :: --- CONFIG BLOCK ---
 set "GAME_ID=skyrim-special-edition"
 set "MOD_DISPLAY_NAME=Skyrim SE Head Tracking"
-set "MOD_DLLS=SkyrimSEHeadTracking.asi HeadTracking.ini"
+:: No config is deployed. The mod creates CameraUnlock.ini at first launch,
+:: importing HeadTracking.ini from an earlier version once, so a copy placed here
+:: would stop that import on an update, and MOD_DLLS's "copy /y" would overwrite
+:: the player's settings on every install.
+set "MOD_DLLS=SkyrimSEHeadTracking.asi"
 set "MOD_INTERNAL_NAME=SkyrimSEHeadTracking"
 set "MOD_VERSION=0.3.0"
 set "STATE_FILE=.headtracking-state.json"
@@ -17,7 +21,7 @@ set "ASI_LOADER_NAME=dinput8.dll"
 :: whatever the user tuned. Listing an .ini in MOD_DLLS instead puts it through
 :: the unconditional copy and resets every key on every update.
 set "MOD_SEED_FILES="
-set "MOD_CONTROLS=Controls (nav-cluster or Ctrl+Shift+letter chord):&echo   End  / Ctrl+Shift+Y - Toggle tracking&echo   PgUp / Ctrl+Shift+G - Toggle position tracking&echo   PgDn / Ctrl+Shift+H - Toggle world/local yaw"
+set "MOD_CONTROLS=Controls (nav-cluster or Ctrl+Shift+letter chord):&echo   End  / Ctrl+Shift+Y - Toggle tracking&echo   PgUp / Ctrl+Shift+G - Cycle tracking mode&echo   PgDn / Ctrl+Shift+H - Toggle world/local yaw"
 :: Not used by this mod. Set blank so a value another mod's wrapper left in
 :: the same console does not reach the body.
 set "ASI_SUBDIR="

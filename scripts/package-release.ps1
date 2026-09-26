@@ -11,8 +11,8 @@
 #       SkyrimSEHeadTracking.asi at the archive root, alongside
 #       README/CHANGELOG/THIRD-PARTY-NOTICES/LICENSE. Users drop the .asi
 #       next to SkyrimSE.exe (Vortex, MO2 with Root Builder, manual all work
-#       the same way). No HeadTracking.ini - the mod self-generates it on
-#       first launch, so bundling it would clobber user config on update.
+#       the same way). No config - the mod creates CameraUnlock.ini on
+#       first launch, so bundling one would clobber user config on update.
 #       Nexus users manage their own ASI loader.
 #
 # Vendoring is refreshed manually by the dev via 'pixi run update-deps'
@@ -69,9 +69,6 @@ if (-not (Test-Path $asiPath)) {
     throw "$modName.asi not found at: $asiPath. Run 'pixi run build-release' first."
 }
 
-$iniPath = Join-Path $projectDir "HeadTracking.ini"
-if (-not (Test-Path $iniPath)) { throw "HeadTracking.ini not found at: $iniPath" }
-
 $scriptsDir = Join-Path $projectDir "scripts"
 foreach ($script in @("install.cmd", "uninstall.cmd")) {
     $p = Join-Path $scriptsDir $script
@@ -100,23 +97,12 @@ foreach ($script in @("install.cmd", "uninstall.cmd")) {
     Write-Host "  $script" -ForegroundColor Green
 }
 
-# Canonical launcher manifest (AGENTS.md: launcher-manifest.json, snake_case v2
-# schema). Stamped to the release version and dropped at the installer ZIP root
-# so the launcher can ingest this package's metadata (mod_info / files / loader /
-# dependencies / runtime_requirements) without parsing install.cmd. delivery_mode
-# is "install_cmd": deployment still runs via the legacy install.cmd/uninstall.cmd
-# path that sits alongside it (the single-DLL ASI loader copy is not yet
-# expressible in the v2 loader.archives zip-only schema).
+# Launcher manifest: the file lopari reads at the installer ZIP root to learn
+# the mod's identity, strategy, delivery mode and where its config file is.
+# Stamped to the release version. No config is shipped: the mod creates
+# CameraUnlock.ini at first launch.
 $manifestSource = Join-Path $projectDir "launcher-manifest.json"
 if (-not (Test-Path $manifestSource)) { throw "launcher-manifest.json not found at: $manifestSource" }
-
-# loader.seed is a base64 copy of HeadTracking.ini, and it is the config a
-# launcher-deployed user actually gets. The committed manifest is the
-# authoritative copy of it: reviewable, diffable and in git, where the blob
-# inside the ZIP is a build product. Refreshing the blob from disk here would
-# ship a correct ZIP over a stale committed file, so drift fails the build and
-# gets re-stamped in a commit instead.
-Assert-ManifestSeedsMatchShipped -ManifestPath $manifestSource -ProjectRoot $projectDir
 
 $launcherManifest = Get-Content $manifestSource -Raw | ConvertFrom-Json
 $launcherManifest.mod_info.version = $version
@@ -127,8 +113,6 @@ $pluginsDir = Join-Path $stagingInstaller "plugins"
 New-Item -ItemType Directory -Path $pluginsDir -Force | Out-Null
 Copy-Item $asiPath -Destination $pluginsDir -Force
 Write-Host "  plugins/$modName.asi" -ForegroundColor Green
-Copy-Item $iniPath -Destination $pluginsDir -Force
-Write-Host "  plugins/HeadTracking.ini" -ForegroundColor Green
 
 $vendorDest = Join-Path $stagingInstaller "vendor/ultimate-asi-loader"
 New-Item -ItemType Directory -Path $vendorDest -Force | Out-Null
@@ -180,9 +164,10 @@ New-Item -ItemType Directory -Path $stagingNexus -Force | Out-Null
 Copy-Item $asiPath -Destination $stagingNexus -Force
 Write-Host "  $modName.asi" -ForegroundColor Green
 
-# HeadTracking.ini is deliberately NOT shipped: Mod::LoadConfig writes it with
-# defaults on first launch if absent, so bundling it would overwrite the
-# user's tuned config every time they update the mod through Nexus.
+# No config is shipped: the mod creates CameraUnlock.ini on first launch, and
+# imports an earlier version's HeadTracking.ini into it once. A copy of either
+# in the ZIP would overwrite the player's settings when extracted over the game
+# folder, and a CameraUnlock.ini there would also stop that import.
 #
 # Docs sit at the archive root (informational, not deployed to the game
 # folder). THIRD-PARTY-NOTICES travels with the binary for attribution of the

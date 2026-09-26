@@ -1,59 +1,40 @@
 #pragma once
 
-#include <cstdint>
+#include <cameraunlock/config/config_owner.h>
+#include <cameraunlock/config/config_table.h>
+#include <cameraunlock/config/defaults_file.h>
+#include <cameraunlock/config/head_tracking_config.h>
+#include <cameraunlock/config/legacy_import.h>
 
-#include <cameraunlock/data/position_settings.h>
-#include <cameraunlock/math/smoothing_utils.h>
+#include <string>
 
 namespace SkyrimHT {
 
-struct Config {
-    // Network settings
-    uint16_t udpPort = DEFAULT_UDP_PORT;
+// Beside the .asi, which is beside SkyrimSE.exe.
+constexpr const wchar_t* kConfigFileName = L"CameraUnlock.ini";
+// The file every build before the canonical config format read, imported once while
+// CameraUnlock.ini is absent and never written.
+constexpr const wchar_t* kLegacyConfigFileName = L"HeadTracking.ini";
+// The game's name as cameraunlock-core's data/games.json spells it.
+constexpr const char* kConfigDisplayName = "Skyrim Special Edition";
 
-    // Sensitivity multipliers
-    float yawMultiplier = 1.0f;
-    float pitchMultiplier = 1.0f;
-    float rollMultiplier = 1.0f;
-
-    // Smoothing. The value used is picked per connection from the packet source
-    // address: a tracker on this machine (loopback) uses localSmoothing, a
-    // remote network device uses remoteSmoothing. Both cover rotation and
-    // position. 0.0 = none, 1.0 = heavy.
-    float localSmoothing = static_cast<float>(cameraunlock::math::kDefaultLocalSmoothing);
-    float remoteSmoothing = static_cast<float>(cameraunlock::math::kDefaultRemoteSmoothing);
-
-    // Hotkeys (Virtual Key codes)
-    int toggleKey = DEFAULT_TOGGLE_KEY;
-    int positionToggleKey = DEFAULT_POSITION_TOGGLE_KEY;
-    int yawModeKey = DEFAULT_YAW_MODE_KEY;
-
-    // Position settings (6DOF)
-    float positionSensitivityX = 1.0f;
-    float positionSensitivityY = 1.0f;
-    float positionSensitivityZ = 1.0f;
-    float positionLimitX = cameraunlock::PositionSettings{}.limit_x;
-    float positionLimitY = cameraunlock::PositionSettings{}.limit_y;
-    float positionLimitZ = cameraunlock::PositionSettings{}.limit_z;
-    float positionLimitZBack = cameraunlock::PositionSettings{}.limit_z_back;
-    bool positionInvertX = true;
-    bool positionInvertY = false;
-    bool positionInvertZ = false;
-    bool positionEnabled = true;
-
-    // General settings
-    bool autoEnable = true;
-    bool showNotifications = true;
-    bool worldSpaceYaw = true;
-
-    // Crosshair overlay
-    // showCrosshair = false keeps the game's center reticle as-is.
-    bool showCrosshair = true;
-
-    // Writes the file the mod reads, for Mod::LoadConfig to create where there is none. The
-    // reader is legacy::Read (src/legacy_config/).
-    bool Save(const char* path) const;
-    void SetDefaults();
+// Core's config, at core's defaults, plus the one setting only this mod has.
+struct Config : cameraunlock::HeadTrackingConfig {
+    bool show_notifications = true;
 };
+
+// The rows of CameraUnlock.ini. Only the tracking mode pair and WorldSpaceYaw are Writable:
+// the mode and yaw hotkeys save the player's choice, and End changes the session only.
+cameraunlock::config::ConfigTable<Config> MakeConfigTable();
+
+// HeadTracking.ini as the builds before the canonical format read it (legacy_config/), mapped
+// into Config.
+cameraunlock::config::LegacyImport<Config> MakeLegacyImport();
+
+// The owner's options for CameraUnlock.ini in `folder`, with HeadTracking.ini beside it as the
+// legacy file. `folder` ends in a separator. The mod passes DefaultsFile::PerUser() and a test
+// a scratch file.
+cameraunlock::config::ConfigOwnerOptions<Config> MakeConfigOwnerOptions(
+    const std::wstring& folder, cameraunlock::config::DefaultsFile defaults);
 
 } // namespace SkyrimHT

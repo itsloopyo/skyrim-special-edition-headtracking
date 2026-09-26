@@ -1,83 +1,130 @@
 #include "pch.h"
 #include "config.h"
-#include "logger.h"
+
+#include "legacy_config/legacy_config.h"
+
+#include <cameraunlock/config/head_tracking_config_table.h>
+#include <cameraunlock/input/key_bindings.h>
+#include <cameraunlock/tracking/tracking_mode.h>
+
+#include <cmath>
+#include <utility>
+#include <vector>
 
 namespace SkyrimHT {
 
-// Inline member initializers on the Config struct are the single source of truth
-// for defaults. SetDefaults() resets the whole struct to its freshly-constructed state.
-void Config::SetDefaults() {
-    *this = Config{};
+namespace {
+
+namespace cfg = cameraunlock::config;
+using cameraunlock::input::KeyBinding;
+using cameraunlock::input::KeyModifiers;
+
+// A legacy hotkey code and the Ctrl+Shift chord every earlier build registered beside it, as
+// one key list.
+std::string KeyList(int vk, char letter, const char* key, std::vector<cfg::DroppedValue>& dropped) {
+    const std::string code = cfg::LegacyVirtualKeyToBindings(vk, "Hotkeys", key, dropped);
+    const std::string chord =
+        cameraunlock::input::FormatKeyBindings({KeyBinding{KeyModifiers::kCtrl | KeyModifiers::kShift, letter}});
+    return code.empty() ? chord : code + ", " + chord;
 }
 
-bool Config::Save(const char* path) const {
-    std::ofstream file(path);
-    if (!file.is_open()) {
-        Logger::Instance().Error("Failed to save config to %s", path);
-        return false;
-    }
+cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
+    // The builds before this one opened the file by the ANSI path GetModuleFileNameA gave them,
+    // through inih's fopen, so the import opens it the same way.
+    legacy::Config c;
+    const legacy::ReadStatus status = legacy::Read(input.ansi_path.c_str(), c);
 
-    file << "; Skyrim SE Head Tracking Configuration\n";
-    file << "; Delete this file to reset to defaults\n\n";
+    std::vector<cfg::DroppedValue> dropped;
+    std::vector<cfg::PoseShapingValue> shaping;
+    const Config defaults = MakeConfigTable().defaults();
 
-    file << "[Network]\n";
-    file << "; UDP port for OpenTrack data (default: 4242)\n";
-    file << "UDPPort=" << udpPort << "\n\n";
+    out.udp_port = c.udpPort;
+    out.enable_on_startup = c.autoEnable;
+    out.world_space_yaw = c.worldSpaceYaw;
+    out.show_notifications = c.showNotifications;
 
-    file << "[Sensitivity]\n";
-    file << "; Rotation sensitivity multipliers (1.0 = 1:1)\n";
-    file << "YawMultiplier=" << yawMultiplier << "\n";
-    file << "PitchMultiplier=" << pitchMultiplier << "\n";
-    file << "RollMultiplier=" << rollMultiplier << "\n";
-    file << "; Smoothing, applied to both rotation and position. The value is picked\n";
-    file << "; per connection from the packet source address.\n";
-    file << "; LocalSmoothing: tracker running on this machine (loopback).\n";
-    file << "; RemoteSmoothing: tracker on a remote network device (phone on WiFi).\n";
-    file << "; 0.0 = no smoothing, 1.0 = heavy. Raise for a noisier tracker - it\n";
-    file << "; costs perceived latency.\n";
-    file << "LocalSmoothing=" << localSmoothing << "\n";
-    file << "RemoteSmoothing=" << remoteSmoothing << "\n\n";
+    // [Position] Enabled chose only the mode the session started in: the cycle key reached
+    // every mode either way.
+    const cameraunlock::TrackingModeChannels mode = cameraunlock::EncodeTrackingMode(
+        c.positionEnabled ? cameraunlock::TrackingMode::RotationAndPosition
+                          : cameraunlock::TrackingMode::RotationOnly);
+    out.rotation_enabled = mode.rotation_enabled;
+    out.position_enabled = mode.position_enabled;
 
-    file << "[Position]\n";
-    file << "; Position tracking sensitivity (0.1-10.0, higher = more movement)\n";
-    file << "SensitivityX=" << positionSensitivityX << "\n";
-    file << "SensitivityY=" << positionSensitivityY << "\n";
-    file << "SensitivityZ=" << positionSensitivityZ << "\n";
-    file << "; Position limits in meters (how far the camera can move)\n";
-    file << "LimitX=" << positionLimitX << "\n";
-    file << "LimitY=" << positionLimitY << "\n";
-    file << "LimitZ=" << positionLimitZ << "\n";
-    file << "; Backward lean limit (prevents camera clipping through player model)\n";
-    file << "LimitZBack=" << positionLimitZBack << "\n";
-    file << "; Invert position axes\n";
-    file << "InvertX=" << (positionInvertX ? "true" : "false") << "\n";
-    file << "InvertY=" << (positionInvertY ? "true" : "false") << "\n";
-    file << "InvertZ=" << (positionInvertZ ? "true" : "false") << "\n";
-    file << "; Enable/disable position tracking (6DOF)\n";
-    file << "Enabled=" << (positionEnabled ? "true" : "false") << "\n\n";
+    // The frozen reader holds both smoothings to [0, 1] and every limit to [0.01, 2], but
+    // std::clamp hands a NaN back as it is, and N2 imports one as the row's default.
+    const auto finite = [&dropped](float value, float rowDefault, const char* section, const char* key) {
+        return cfg::LegacyFiniteOrDefault(value, rowDefault, section, key, dropped);
+    };
+    out.local_smoothing = finite(c.localSmoothing, defaults.local_smoothing, "Sensitivity", "LocalSmoothing");
+    out.position.local_smoothing = out.local_smoothing;
+    out.remote_smoothing = finite(c.remoteSmoothing, defaults.remote_smoothing, "Sensitivity", "RemoteSmoothing");
+    out.position.remote_smoothing = out.remote_smoothing;
 
-    file << "[Hotkeys]\n";
-    file << "; Virtual key codes (hex)\n";
-    file << "ToggleKey=0x" << std::hex << toggleKey << "    ; End - Enable/disable\n";
-    file << "PositionToggleKey=0x" << std::hex << positionToggleKey << " ; Page Up - Toggle position\n";
-    file << "YawModeKey=0x" << std::hex << yawModeKey << "        ; Page Down - Toggle world/local yaw\n\n";
+    // LimitY bounded both directions, so it becomes both explicit values.
+    out.position.limit_x = finite(c.positionLimitX, defaults.position.limit_x, "Position", "LimitX");
+    out.position.limit_y = finite(c.positionLimitY, defaults.position.limit_y, "Position", "LimitY");
+    out.position.limit_y_down = std::isfinite(c.positionLimitY) ? c.positionLimitY : defaults.position.limit_y_down;
+    out.position.limit_z = finite(c.positionLimitZ, defaults.position.limit_z, "Position", "LimitZ");
+    out.position.limit_z_back = finite(c.positionLimitZBack, defaults.position.limit_z_back, "Position", "LimitZBack");
 
-    file << "[General]\n";
-    file << "; Auto-enable tracking on game start\n";
-    file << "AutoEnable=" << (autoEnable ? "true" : "false") << "\n";
-    file << "; Show on-screen notifications (logged to HeadTracking.log)\n";
-    file << "ShowNotifications=" << (showNotifications ? "true" : "false") << "\n";
-    file << "; Yaw mode: true = horizon-locked (default), false = camera-local\n";
-    file << "WorldSpaceYaw=" << (worldSpaceYaw ? "true" : "false") << "\n\n";
+    // Every sensitivity shipped at 1.0, identity. InvertX shipped true, and that inversion is
+    // now the x negation in CameraLocalLeanOffset. InvertY shipped false, and so has InvertZ
+    // since b285051 moved the depth sign to that boundary. A value the player changed is
+    // dropped.
+    const auto shape = [&](auto value, auto shipped, const char* section, const char* key) {
+        cfg::LegacyPoseShaping(value, shipped, section, key, shaping, dropped);
+    };
+    shape(c.yawMultiplier, legacy::kDefaultMultiplier, "Sensitivity", "YawMultiplier");
+    shape(c.pitchMultiplier, legacy::kDefaultMultiplier, "Sensitivity", "PitchMultiplier");
+    shape(c.rollMultiplier, legacy::kDefaultMultiplier, "Sensitivity", "RollMultiplier");
+    shape(c.positionSensitivityX, legacy::kDefaultPositionSensitivity, "Position", "SensitivityX");
+    shape(c.positionSensitivityY, legacy::kDefaultPositionSensitivity, "Position", "SensitivityY");
+    shape(c.positionSensitivityZ, legacy::kDefaultPositionSensitivity, "Position", "SensitivityZ");
+    shape(c.positionInvertX, legacy::kDefaultPositionInvertX, "Position", "InvertX");
+    shape(c.positionInvertY, legacy::kDefaultPositionInvertY, "Position", "InvertY");
+    shape(c.positionInvertZ, legacy::kDefaultPositionInvertZ, "Position", "InvertZ");
 
-    file << "[Crosshair]\n";
-    file << "; Reposition the game's native crosshair to follow your aim once\n";
-    file << "; head tracking moves the view. Set false to leave it at centre.\n";
-    file << "Show=" << (showCrosshair ? "true" : "false") << "\n";
+    // The game's crosshair now always follows the aim.
+    if (!c.showCrosshair) dropped.push_back({cfg::DropRule::Reticle, "Crosshair", "Show", "false"});
 
-    file.close();
-    Logger::Instance().Info("Config saved to %s", path);
-    return true;
+    out.toggle_key_name = KeyList(c.toggleKey, 'Y', "ToggleKey", dropped);
+    out.cycle_tracking_mode_key_name = KeyList(c.positionToggleKey, 'G', "PositionToggleKey", dropped);
+    out.yaw_mode_key_name = KeyList(c.yawModeKey, 'H', "YawModeKey", dropped);
+
+    return status == legacy::ReadStatus::Absent ? cfg::ImportResult::Absent(std::move(dropped), std::move(shaping))
+                                                : cfg::ImportResult::Imported(std::move(dropped), std::move(shaping));
+}
+
+}  // namespace
+
+cfg::ConfigTable<Config> MakeConfigTable() {
+    using C = cfg::schema::Concept;
+    cfg::ConfigTable<Config> table = cfg::HeadTrackingConfigTable<Config>(
+        {C::UdpPort, C::EnableOnStartup, C::WorldSpaceYaw, C::RotationEnabled, C::LocalSmoothing,
+         C::RemoteSmoothing, C::PositionEnabled, C::PositionLimitX, C::PositionLimitY, C::PositionLimitYDown,
+         C::PositionLimitZ, C::PositionLimitZBack, C::ToggleKey, C::CycleTrackingModeKey, C::YawModeKey});
+    table.Select(C::WorldSpaceYaw).Writable()
+        .Select(C::RotationEnabled).Writable()
+        .Select(C::PositionEnabled).Writable();
+    table.Local("General", "ShowNotifications", &Config::show_notifications, cfg::BoolCodec(),
+                "true: write the mod's notices (tracking on or off, a mode change) to HeadTracking.log.");
+    return table;
+}
+
+cfg::LegacyImport<Config> MakeLegacyImport() {
+    return {&Import, legacy::ReadKeys()};
+}
+
+cfg::ConfigOwnerOptions<Config> MakeConfigOwnerOptions(const std::wstring& folder, cfg::DefaultsFile defaults) {
+    cfg::ConfigOwnerOptions<Config> options;
+    options.path = folder + kConfigFileName;
+    options.legacy_path = folder + kLegacyConfigFileName;
+    options.table = MakeConfigTable();
+    options.import = MakeLegacyImport();
+    options.header.display_name = kConfigDisplayName;
+    options.defaults = std::move(defaults);
+    return options;
 }
 
 } // namespace SkyrimHT

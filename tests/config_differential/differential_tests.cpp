@@ -1,14 +1,36 @@
 // SPDX-License-Identifier: MIT
 //
-// The config differential test. Every input is read two ways:
+// The config differential test. Every input is read three ways:
 //
 //   oracle     the published build's reader (oracle/), v0.3.0 at c3a1f7f, with its
 //              Mod::LoadConfig
 //   import     the frozen reader in src/legacy_config/
+//   migration  the config owner importing the input, as HeadTracking.ini, into a new
+//              CameraUnlock.ini beside it, then the canonical reader and table on the result,
+//              and the startup code of this build
 //
 // Comparison 1, oracle against import, finds what a player updating from the published build
 // sees change that the conversion did not cause. Every difference it may find is listed in
 // kComparisonOneDifferences with the commit that made it; any other fails the test.
+//
+// Comparison 2, import against migration, is the proof for the migration: no difference but
+// the approved ones, each of which the import must record as dropped. A sensitivity or an
+// axis inversion the player set away from what the build shipped is dropped (pose_shaping);
+// the shipped InvertX=true is the x negation at the engine boundary now, which
+// lean_direction_tests holds bit for bit. [Crosshair] Show=false is dropped (reticle): the
+// game's crosshair always follows the aim now. A hotkey code outside 0x01-0xFE imports as
+// unbound (N1), and a float the reader let through as NaN imports as the row's default (N2).
+// The frozen reader clamps every other number into a range the canonical rows hold, so no
+// input is deferred for a value.
+//
+// Comparison 2 runs over two Defaults.ini files, one at the built-in values and one a player
+// changed, since the migration writes default exactly where the imported value equals what
+// Defaults.ini gives. After every load HeadTracking.ini keeps its bytes, its write time and its
+// attribute, Defaults.ini is never written, and the folder holds the legacy file and
+// CameraUnlock.ini and nothing else. The next load reads CameraUnlock.ini, imports nothing and
+// writes nothing, and a read-only legacy file imports as a writable one does. The distinct
+// migrated files are written beside the executable under migrated\, for lint-migrated.mjs to
+// run core's canonical config lint over.
 //
 // Inputs: no file, an empty file, the HeadTracking.ini each release shipped (v0.1.0, v0.1.1 and
 // v0.2.0 shipped one file and v0.3.0 another, in the installer ZIP's plugins\ and as the launcher
@@ -18,9 +40,12 @@
 // each code from 0x01 to 0xFE, the v0.3.0 file with a number that is not finite on each float it
 // reads, and a legacy file another program holds open with no sharing.
 
+#include "core/config.h"
 #include "legacy_config/legacy_config.h"
 #include "oracle_adapter.h"
 
+#include "cameraunlock/config/config_owner.h"
+#include "cameraunlock/config/defaults_file.h"
 #include "cameraunlock/config/legacy_import.h"
 #include "cameraunlock/config/testing/ini_mutations.h"
 #include "cameraunlock/input/key_binding_registration.h"
@@ -30,6 +55,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -37,6 +63,7 @@
 #include <iterator>
 #include <map>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -47,6 +74,7 @@ namespace {
 
 namespace legacy = SkyrimHT::legacy;
 namespace cfg = cameraunlock::config;
+using SkyrimHT::Config;
 using cameraunlock::TrackingMode;
 using cameraunlock::config::testing::GenerateIniMutations;
 using cameraunlock::config::testing::IniMutation;
@@ -464,6 +492,243 @@ std::vector<MutationKey> CorpusKeys() {
 }
 
 // ---------------------------------------------------------------------------
+// Comparison 2: the frozen reader against the migration
+// ---------------------------------------------------------------------------
+
+// What the mod starts with. Pose shaping is not here: the migrated build applies none, which
+// CheckNoShaping holds it to, and CheckPoseShaping holds the import to listing every value it
+// leaves out. Nor is the crosshair: the migrated build always moves it, and CheckDropRules holds
+// the import to recording a [Crosshair] Show=false it leaves out.
+struct Start {
+    int port = 0;
+    bool enabled = false;
+    TrackingMode mode = TrackingMode::RotationAndPosition;
+    bool world_yaw = false;
+    bool notifications = false;
+    uint32_t local_smoothing = 0;
+    uint32_t remote_smoothing = 0;
+    uint32_t limit_x = 0;
+    uint32_t limit_y = 0;
+    uint32_t limit_y_down = 0;
+    uint32_t limit_z = 0;
+    uint32_t limit_z_back = 0;
+    std::vector<Registration> hotkeys;
+};
+
+const cfg::DroppedValue* FindDrop(const std::vector<cfg::DroppedValue>& dropped, cfg::DropRule rule,
+                                  const char* section, const char* key) {
+    for (const cfg::DroppedValue& d : dropped) {
+        if (d.rule == rule && d.section == section && d.key == key) return &d;
+    }
+    return nullptr;
+}
+
+// A hotkey code outside 0x01-0xFE imports as unbound (N1), and only then is it dropped. Code 0
+// never fired on the published build's poller and imports as unbound, unrecorded.
+bool KeyKept(const std::string& name, int vk, const char* key, const std::vector<cfg::DroppedValue>& dropped) {
+    const bool outOfRange = vk != 0 && (vk < 0x01 || vk > 0xFE);
+    if (outOfRange != (FindDrop(dropped, cfg::DropRule::KeyCodeOutOfRange, "Hotkeys", key) != nullptr)) {
+        Fail(name, std::string("[Hotkeys] ") + key + " dropped as out of range does not match its code");
+    }
+    return vk != 0 && !outOfRange;
+}
+
+// A float the frozen reader left NaN imports as the row's default (N2), and only then is it
+// dropped.
+uint32_t FiniteOrDefault(const std::string& name, float value, float rowDefault, const char* section, const char* key,
+                         const std::vector<cfg::DroppedValue>& dropped) {
+    const bool finite = std::isfinite(value);
+    if (finite == (FindDrop(dropped, cfg::DropRule::NonFiniteNumber, section, key) != nullptr)) {
+        Fail(name, std::string("[") + section + "] " + key + " dropped as not finite does not match its value");
+    }
+    return Bits(finite ? value : rowDefault);
+}
+
+// Mod::Initialize and RegisterBindings as commit A ran them, with the approved changes applied:
+// a NaN the reader let through is the row's default (N2), and a code N1 unbinds is not registered.
+Start FromImport(const std::string& name, const legacy::Config& c, const std::vector<cfg::DroppedValue>& dropped) {
+    const Config defaults = SkyrimHT::MakeConfigTable().defaults();
+    Start s;
+    s.port = c.udpPort;
+    s.enabled = c.autoEnable;
+    s.mode = c.positionEnabled ? TrackingMode::RotationAndPosition : TrackingMode::RotationOnly;
+    s.world_yaw = c.worldSpaceYaw;
+    s.notifications = c.showNotifications;
+    s.local_smoothing =
+        FiniteOrDefault(name, c.localSmoothing, defaults.local_smoothing, "Sensitivity", "LocalSmoothing", dropped);
+    s.remote_smoothing =
+        FiniteOrDefault(name, c.remoteSmoothing, defaults.remote_smoothing, "Sensitivity", "RemoteSmoothing", dropped);
+    s.limit_x = FiniteOrDefault(name, c.positionLimitX, defaults.position.limit_x, "Position", "LimitX", dropped);
+    s.limit_y = FiniteOrDefault(name, c.positionLimitY, defaults.position.limit_y, "Position", "LimitY", dropped);
+    s.limit_y_down = Bits(std::isfinite(c.positionLimitY) ? c.positionLimitY : defaults.position.limit_y_down);
+    s.limit_z = FiniteOrDefault(name, c.positionLimitZ, defaults.position.limit_z, "Position", "LimitZ", dropped);
+    s.limit_z_back =
+        FiniteOrDefault(name, c.positionLimitZBack, defaults.position.limit_z_back, "Position", "LimitZBack", dropped);
+    const bool toggleKept = KeyKept(name, c.toggleKey, "ToggleKey", dropped);
+    const bool cycleKept = KeyKept(name, c.positionToggleKey, "PositionToggleKey", dropped);
+    const bool yawKept = KeyKept(name, c.yawModeKey, "YawModeKey", dropped);
+    for (const Registration& r : PublishedHotkeys(c)) {
+        const bool kept = r.modifiers == kChord || (r.action == Action::Toggle && toggleKept) ||
+                          (r.action == Action::CycleMode && cycleKept) || (r.action == Action::YawMode && yawKept);
+        if (kept) s.hotkeys.push_back(r);
+    }
+    return s;
+}
+
+// This build: Mod::Initialize, and the lists RegisterBindings registers.
+Start FromMigration(const Config& c) {
+    Start s;
+    s.port = c.udp_port;
+    s.enabled = c.enable_on_startup;
+    s.mode = cameraunlock::DecodeTrackingMode(c.rotation_enabled, c.position_enabled).value();
+    s.world_yaw = c.world_space_yaw;
+    s.notifications = c.show_notifications;
+    s.local_smoothing = Bits(c.local_smoothing);
+    s.remote_smoothing = Bits(c.remote_smoothing);
+    s.limit_x = Bits(c.position.limit_x);
+    s.limit_y = Bits(c.position.limit_y);
+    s.limit_y_down = Bits(c.position.limit_y_down);
+    s.limit_z = Bits(c.position.limit_z);
+    s.limit_z_back = Bits(c.position.limit_z_back);
+    const std::pair<Action, const std::string*> lists[] = {
+        {Action::Toggle, &c.toggle_key_name},
+        {Action::CycleMode, &c.cycle_tracking_mode_key_name},
+        {Action::YawMode, &c.yaw_mode_key_name},
+    };
+    for (const auto& [action, list] : lists) {
+        const cameraunlock::input::KeyBindingsParseResult parsed = cameraunlock::input::ParseKeyBindings(*list);
+        if (!parsed.ok()) throw std::logic_error("a migrated hotkey list does not parse: " + *list);
+        for (const cameraunlock::input::KeyBinding& b : parsed.bindings) {
+            s.hotkeys.push_back({action, b.vk, static_cast<unsigned>(b.modifiers)});
+        }
+    }
+    std::sort(s.hotkeys.begin(), s.hotkeys.end());
+    return s;
+}
+
+std::vector<std::string> StartDifferences(const Start& a, const Start& b) {
+    std::vector<std::string> out;
+#define SAME(f) \
+    if (a.f != b.f) out.push_back(#f)
+    SAME(port);
+    SAME(enabled);
+    SAME(mode);
+    SAME(world_yaw);
+    SAME(notifications);
+    SAME(local_smoothing);
+    SAME(remote_smoothing);
+    SAME(limit_x);
+    SAME(limit_y);
+    SAME(limit_y_down);
+    SAME(limit_z);
+    SAME(limit_z_back);
+#undef SAME
+    if (a.hotkeys != b.hotkeys) out.push_back("hotkeys " + Describe(a.hotkeys) + " against " + Describe(b.hotkeys));
+    return out;
+}
+
+// The runtime config applies no pose shaping of its own: the position processor gets it
+// whole, and the rotation processor's sensitivity is never set, so both must be identity, and
+// the position smoothing must be the smoothing rows' values.
+void CheckNoShaping(const std::string& name, const Config& c) {
+    const cameraunlock::PositionSettings& p = c.position;
+    if (p.sensitivity_x != 1.0f || p.sensitivity_y != 1.0f || p.sensitivity_z != 1.0f || p.invert_x || p.invert_y ||
+        p.invert_z) {
+        Fail(name, "the migrated config shapes the position");
+    }
+    if (Bits(p.local_smoothing) != Bits(c.local_smoothing) || Bits(p.remote_smoothing) != Bits(c.remote_smoothing)) {
+        Fail(name, "the position smoothing is not the smoothing rows' values");
+    }
+}
+
+// Every sensitivity and inversion the frozen reader read is listed in its place, folded where
+// it holds what the build shipped and dropped as PoseShaping where it does not. Returns how
+// many were dropped.
+int CheckPoseShaping(const std::string& name, const legacy::Config& c, const cfg::ImportResult& result) {
+    struct Read {
+        const char* section;
+        const char* key;
+        bool shipped;
+    };
+    const Read reads[] = {
+        {"Sensitivity", "YawMultiplier", c.yawMultiplier == legacy::kDefaultMultiplier},
+        {"Sensitivity", "PitchMultiplier", c.pitchMultiplier == legacy::kDefaultMultiplier},
+        {"Sensitivity", "RollMultiplier", c.rollMultiplier == legacy::kDefaultMultiplier},
+        {"Position", "SensitivityX", c.positionSensitivityX == legacy::kDefaultPositionSensitivity},
+        {"Position", "SensitivityY", c.positionSensitivityY == legacy::kDefaultPositionSensitivity},
+        {"Position", "SensitivityZ", c.positionSensitivityZ == legacy::kDefaultPositionSensitivity},
+        {"Position", "InvertX", c.positionInvertX == legacy::kDefaultPositionInvertX},
+        {"Position", "InvertY", c.positionInvertY == legacy::kDefaultPositionInvertY},
+        {"Position", "InvertZ", c.positionInvertZ == legacy::kDefaultPositionInvertZ},
+    };
+    if (result.pose_shaping.size() != std::size(reads)) {
+        Fail(name, "the import lists " + std::to_string(result.pose_shaping.size()) + " pose-shaping values, not 9");
+        return 0;
+    }
+    int dropped = 0;
+    for (size_t k = 0; k < std::size(reads); ++k) {
+        const cfg::PoseShapingValue& v = result.pose_shaping[k];
+        const std::string label = std::string("[") + reads[k].section + "] " + reads[k].key;
+        if (v.section != reads[k].section || v.key != reads[k].key) Fail(name, label + " is not listed in its place");
+        if (v.folded != reads[k].shipped) Fail(name, label + " is " + (v.folded ? "folded" : "dropped") + " wrongly");
+        const bool listed = FindDrop(result.dropped, cfg::DropRule::PoseShaping, reads[k].section, reads[k].key) != nullptr;
+        if (listed == reads[k].shipped) {
+            Fail(name, label + (listed ? " is dropped at its shipped value" : " is changed and not dropped"));
+        }
+        if (!reads[k].shipped) ++dropped;
+    }
+    return dropped;
+}
+
+// Every drop the import recorded is by one of the approved rules this map applies, and
+// [Crosshair] Show is dropped exactly where it was false.
+void CheckDropRules(const std::string& name, const legacy::Config& c, const cfg::ImportResult& result) {
+    for (const cfg::DroppedValue& d : result.dropped) {
+        const bool approved = d.rule == cfg::DropRule::PoseShaping || d.rule == cfg::DropRule::KeyCodeOutOfRange ||
+                              d.rule == cfg::DropRule::NonFiniteNumber || d.rule == cfg::DropRule::Reticle;
+        if (!approved) Fail(name, "the import drops [" + d.section + "] " + d.key + " by a rule this map never applies");
+    }
+    const bool reticle = FindDrop(result.dropped, cfg::DropRule::Reticle, "Crosshair", "Show") != nullptr;
+    if (reticle != !c.showCrosshair) Fail(name, "[Crosshair] Show dropped does not match its value");
+}
+
+struct MigrationTally {
+    std::string committed;
+    std::wstring builtin_defaults;
+    std::wstring altered_defaults;
+    std::set<std::string> migrated;
+    int created = 0;
+    int converted = 0;
+    int with_default_rows = 0;
+    int with_values = 0;
+    int with_pose_shaping_dropped = 0;
+    int with_n1 = 0;
+    int with_n2 = 0;
+    int with_reticle = 0;
+};
+
+cfg::ConfigOwnerOptions<Config> Options(const std::wstring& dir, const std::wstring& defaults) {
+    return SkyrimHT::MakeConfigOwnerOptions(dir + L"\\", cfg::DefaultsFile::At(defaults));
+}
+
+FILETIME WriteTime(const std::wstring& path) {
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) {
+        throw std::runtime_error("cannot read a test file's attributes");
+    }
+    return data.ftLastWriteTime;
+}
+
+bool SameTime(const FILETIME& a, const FILETIME& b) {
+    return a.dwLowDateTime == b.dwLowDateTime && a.dwHighDateTime == b.dwHighDateTime;
+}
+
+bool Contains(const std::vector<std::string>& lines, const std::string& text) {
+    return std::any_of(lines.begin(), lines.end(),
+                       [&text](const std::string& line) { return line.find(text) != std::string::npos; });
+}
+
+// ---------------------------------------------------------------------------
 // The run
 // ---------------------------------------------------------------------------
 
@@ -472,16 +737,19 @@ struct Folders {
     std::wstring root;
     std::wstring oracle;
     std::wstring import;
+    std::wstring migration;
+    std::wstring read_only;
 };
 
 Folders NextFolders(const std::wstring& root) {
     static int n = 0;
     const std::wstring dir = MakeFolder(root, std::to_wstring(n++).c_str());
-    return {dir, MakeFolder(dir, L"oracle"), MakeFolder(dir, L"import")};
+    return {dir, MakeFolder(dir, L"oracle"), MakeFolder(dir, L"import"), MakeFolder(dir, L"migration"),
+            MakeFolder(dir, L"read-only")};
 }
 
 void RemoveFolders(const Folders& f) {
-    for (const std::wstring& dir : {f.oracle, f.import, f.root}) {
+    for (const std::wstring& dir : {f.oracle, f.import, f.migration, f.read_only, f.root}) {
         EmptyFolder(dir);
         if (!RemoveDirectoryW(dir.c_str())) throw std::runtime_error("cannot remove a test folder");
     }
@@ -489,7 +757,132 @@ void RemoveFolders(const Folders& f) {
 
 const wchar_t kIniName[] = L"HeadTracking.ini";
 
-void RunInput(const std::wstring& root, const std::string& name, const std::optional<std::string>& bytes) {
+// The owner's load on the legacy file `bytes` in `dir`, read-only when asked, with everything
+// the migration must leave as it was checked afterwards: the legacy file's bytes, write time and
+// attribute, Defaults.ini's bytes, and a folder holding the legacy file and CameraUnlock.ini
+// and nothing else.
+struct Migration {
+    cfg::ConfigLoadResult<Config> loaded;
+    std::optional<std::string> bytes;
+};
+
+Migration Migrate(const std::string& name, const std::wstring& dir, const std::optional<std::string>& legacyBytes,
+                  bool readOnly, const std::wstring& defaults) {
+    EmptyFolder(dir);
+    const std::wstring legacyPath = dir + L"\\" + kIniName;
+    const std::wstring path = dir + L"\\" + SkyrimHT::kConfigFileName;
+    FILETIME before{};
+    if (legacyBytes) {
+        WriteBytes(legacyPath, *legacyBytes);
+        if (readOnly) SetFileAttributesW(legacyPath.c_str(), FILE_ATTRIBUTE_READONLY);
+        before = WriteTime(legacyPath);
+    }
+    const std::string defaultsBefore = ReadBytes(defaults);
+
+    Migration m{};
+    {
+        cfg::ConfigOwner<Config> owner(Options(dir, defaults));
+        m.loaded = owner.Load();
+    }
+
+    std::map<std::wstring, std::string> expected;
+    if (legacyBytes) {
+        expected[kIniName] = *legacyBytes;
+        if (!SameTime(WriteTime(legacyPath), before)) Fail(name, "the legacy file's write time changed");
+        const DWORD attributes = GetFileAttributesW(legacyPath.c_str());
+        if (((attributes & FILE_ATTRIBUTE_READONLY) != 0) != readOnly) Fail(name, "the legacy file's read-only attribute changed");
+    }
+    if (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        m.bytes = ReadBytes(path);
+        expected[SkyrimHT::kConfigFileName] = *m.bytes;
+    }
+    if (Snapshot(dir) != expected) Fail(name, "the folder holds files other than the legacy file and CameraUnlock.ini");
+    if (ReadBytes(defaults) != defaultsBefore) Fail(name, "the load wrote Defaults.ini");
+    return m;
+}
+
+// The migrated file loaded again over the same Defaults.ini: it reads as canonical with
+// nothing to report, gives the same start, imports nothing and changes neither file.
+void CheckSecondLoad(const std::string& name, const std::wstring& dir, const Migration& first,
+                     const std::optional<std::string>& legacyBytes, const std::wstring& defaults) {
+    const auto before = Snapshot(dir);
+    const std::string defaultsBefore = ReadBytes(defaults);
+    cfg::ConfigOwner<Config> owner(Options(dir, defaults));
+    const cfg::ConfigLoadResult<Config> again = owner.Load();
+    if (again.status != cfg::ConfigLoadStatus::Canonical) Fail(name, "the second load is not Canonical");
+    if (!again.diagnostics.empty()) Fail(name, "the migrated file draws diagnostics");
+    if (!StartDifferences(FromMigration(first.loaded.config), FromMigration(again.config)).empty()) {
+        Fail(name, "the second load starts differently from the first");
+    }
+    if (Contains(again.log, "created from")) Fail(name, "the second load imports again");
+    if (Snapshot(dir) != before || ReadBytes(defaults) != defaultsBefore) Fail(name, "the second load changed a file");
+    if (legacyBytes.has_value() != Contains(again.log, "is left as it was and is not read")) {
+        Fail(name, "the second load's log does not say whether the legacy file was left unread");
+    }
+}
+
+// Comparison 2 over one Defaults.ini. The session must start as the import does in every case
+// but a fresh install over a changed Defaults.ini, which follows that file.
+void MigrateInput(const Folders& f, const std::string& name, const std::optional<std::string>& bytes,
+                  const ImportRun& i, const cfg::ImportResult* result, const std::wstring& defaults,
+                  MigrationTally& tally) {
+    using cfg::ConfigLoadStatus;
+    const bool builtin = defaults == tally.builtin_defaults;
+    const std::string label = name + (builtin ? "" : ", Defaults.ini changed");
+    const Migration m = Migrate(label, f.migration, bytes, false, defaults);
+    CheckNoShaping(label, m.loaded.config);
+
+    if (!bytes) {
+        if (m.loaded.status != ConfigLoadStatus::Created) Fail(label, "no file is not Created");
+        if (m.bytes != tally.committed) Fail(label, "the created file is not HeadTracking.ini as committed");
+        if (builtin) {
+            ++tally.created;
+            for (const std::string& d : StartDifferences(FromImport(label, i.cfg, {}), FromMigration(m.loaded.config))) {
+                Fail(label, "comparison 2: " + d);
+            }
+        }
+        CheckSecondLoad(label, f.migration, m, bytes, defaults);
+        return;
+    }
+
+    if (builtin) {
+        if (CheckPoseShaping(label, i.cfg, *result) > 0) ++tally.with_pose_shaping_dropped;
+        CheckDropRules(label, i.cfg, *result);
+        const auto has = [result](cfg::DropRule rule) {
+            return std::any_of(result->dropped.begin(), result->dropped.end(),
+                               [rule](const cfg::DroppedValue& d) { return d.rule == rule; });
+        };
+        if (has(cfg::DropRule::KeyCodeOutOfRange)) ++tally.with_n1;
+        if (has(cfg::DropRule::NonFiniteNumber)) ++tally.with_n2;
+        if (has(cfg::DropRule::Reticle)) ++tally.with_reticle;
+    }
+
+    for (const std::string& d : StartDifferences(FromImport(label, i.cfg, result->dropped), FromMigration(m.loaded.config))) {
+        Fail(label, "comparison 2: " + d);
+    }
+
+    if (m.loaded.status != ConfigLoadStatus::Migrated) {
+        Fail(label, std::string("the migration is ") + cfg::ConfigLoadStatusName(m.loaded.status) + ": " + m.loaded.reason);
+        return;
+    }
+    if (!Contains(m.loaded.log, "created from")) Fail(label, "the log does not say where CameraUnlock.ini came from");
+    ++tally.converted;
+    tally.migrated.insert(*m.bytes);
+    if (m.bytes->find("=default\r\n") != std::string::npos) ++tally.with_default_rows;
+    if (*m.bytes != tally.committed) ++tally.with_values;
+
+    if (builtin) {
+        const Migration ro = Migrate(label, f.read_only, bytes, true, defaults);
+        if (ro.loaded.status != ConfigLoadStatus::Migrated || ro.bytes != m.bytes) {
+            Fail(label, "a read-only legacy file does not import as a writable one does");
+        }
+    }
+
+    CheckSecondLoad(label, f.migration, m, bytes, defaults);
+}
+
+void RunInput(const std::wstring& root, const std::string& name, const std::optional<std::string>& bytes,
+              MigrationTally& tally) {
     const Folders f = NextFolders(root);
     OracleRun o;
     {
@@ -499,6 +892,7 @@ void RunInput(const std::wstring& root, const std::string& name, const std::opti
     }
 
     ImportRun i;
+    std::optional<cfg::ImportResult> result;
     {
         const std::wstring path = f.import + L"\\" + kIniName;
         if (bytes) {
@@ -507,36 +901,61 @@ void RunInput(const std::wstring& root, const std::string& name, const std::opti
         }
         const auto before = Snapshot(f.import);
         i.status = legacy::Read(Narrow(path).c_str(), i.cfg);
+        if (bytes) {
+            Config mapped = SkyrimHT::MakeConfigTable().defaults();
+            result = SkyrimHT::MakeLegacyImport().run(cfg::LegacyInput{path, Narrow(path), false}, mapped);
+            if (result->status != cfg::ImportStatus::Imported) Fail(name, "the mapped import is not Imported");
+        }
         if (Snapshot(f.import) != before) Fail(name, "the import changed the folder it read from");
         if (!bytes && i.status != legacy::ReadStatus::Absent) Fail(name, "the import read a file that is not there");
     }
 
     CompareOracleWithImport(name, o, i);
+    for (const std::wstring& defaults : {tally.builtin_defaults, tally.altered_defaults}) {
+        MigrateInput(f, name, bytes, i, result ? &*result : nullptr, defaults, tally);
+    }
     RemoveFolders(f);
 }
 
 // A legacy file another program holds open with no sharing. inih cannot open it, so the
 // published build ran on its defaults and failed to write over it, and the import reads it as
-// absent.
-void TestUnopenableFile(const std::wstring& root, const std::string& shipped) {
+// absent. The owner defers the import on its own defaults, which start the same, creates
+// nothing and saves nothing that session.
+void TestUnopenableFile(const std::wstring& root, const std::string& shipped, const MigrationTally& tally) {
     const std::string name = "a legacy file another program holds open with no sharing";
     const Folders f = NextFolders(root);
     OracleRun o;
     ImportRun i;
-    for (const std::wstring& dir : {f.oracle, f.import}) {
+    std::optional<cfg::ConfigLoadResult<Config>> loaded;
+    for (const std::wstring& dir : {f.oracle, f.import, f.migration}) {
         const std::wstring path = dir + L"\\" + kIniName;
         WriteBytes(path, shipped);
         HANDLE held = CreateFileW(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (held == INVALID_HANDLE_VALUE) throw std::runtime_error("cannot hold the test file open");
         if (dir == f.oracle) {
             o.status = oracle_api::LoadOrCreate(Narrow(path).c_str(), o.cfg);
-        } else {
+        } else if (dir == f.import) {
             i.status = legacy::Read(Narrow(path).c_str(), i.cfg);
+        } else {
+            cfg::ConfigOwner<Config> owner(Options(dir, tally.builtin_defaults));
+            loaded.emplace(owner.Load());
+            if (owner.Save([](Config& c) { c.world_space_yaw = false; }).status != cfg::ConfigSaveStatus::NotSaved) {
+                Fail(name, "a deferred session saved");
+            }
         }
         CloseHandle(held);
         if (ReadBytes(path) != shipped) Fail(name, "a build rewrote a file it could not open");
     }
     CompareOracleWithImport(name, o, i);
+    if (loaded->status != cfg::ConfigLoadStatus::Deferred) {
+        Fail(name, std::string("the owner's load is ") + cfg::ConfigLoadStatusName(loaded->status) + ", not Deferred");
+    }
+    for (const std::string& d : StartDifferences(FromImport(name, i.cfg, {}), FromMigration(loaded->config))) {
+        Fail(name, "comparison 2: " + d);
+    }
+    if (Snapshot(f.migration) != std::map<std::wstring, std::string>{{kIniName, shipped}}) {
+        Fail(name, "a deferred import created a file or changed the legacy one");
+    }
     RemoveFolders(f);
 }
 
@@ -626,6 +1045,36 @@ std::string OracleFirstRun(const std::wstring& root) {
     return bytes;
 }
 
+// Defaults.ini as a player may have changed it, from the one the owner created: every value this
+// game takes from it differs from the built-in one, each set to the corpus's alternate for the
+// legacy key it comes from, so a corpus input holding that alternate migrates as default.
+void WriteAlteredDefaults(const MigrationTally& tally) {
+    std::string text = ReadBytes(tally.builtin_defaults);
+    const std::pair<const char*, const char*> changes[] = {
+        {"UdpPort=4242", "UdpPort=5000"},
+        {"EnableOnStartup=true", "EnableOnStartup=false"},
+        {"WorldSpaceYaw=true", "WorldSpaceYaw=false"},
+        {"PositionEnabled=true", "PositionEnabled=false"},
+        {"LocalSmoothing=0.0", "LocalSmoothing=0.3"},
+        {"RemoteSmoothing=0.15", "RemoteSmoothing=0.3"},
+        {"PositionLimitX=0.3", "PositionLimitX=0.25"},
+        {"PositionLimitY=0.2", "PositionLimitY=0.25"},
+        {"PositionLimitYDown=0.2", "PositionLimitYDown=0.25"},
+        {"PositionLimitZ=0.4", "PositionLimitZ=0.25"},
+        {"PositionLimitZBack=0.1", "PositionLimitZBack=0.25"},
+        {"ToggleKey=End, Ctrl+Shift+Y", "ToggleKey=F1, Ctrl+Shift+Y"},
+        {"CycleTrackingModeKey=PageUp, Ctrl+Shift+G", "CycleTrackingModeKey=F2, Ctrl+Shift+G"},
+        {"YawModeKey=PageDown, Ctrl+Shift+H", "YawModeKey=F3, Ctrl+Shift+H"},
+    };
+    for (const auto& [from, to] : changes) {
+        const std::string line = std::string("\r\n") + from + "\r\n";
+        const size_t at = text.find(line);
+        if (at == std::string::npos) throw std::runtime_error(std::string("the created Defaults.ini has no line ") + from);
+        text.replace(at + 2, std::strlen(from), to);
+    }
+    WriteBytes(tally.altered_defaults, text);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -643,6 +1092,22 @@ int main(int argc, char** argv) {
             RemoveDirectoryW(root.c_str());
             return 0;
         }
+
+        // Each Defaults.ini sits outside the game folder, in a user folder of its own whose
+        // parent exists, as the owner requires before it creates the file.
+        MigrationTally tally;
+        tally.committed = ReadBytes(Widen(SKYRIMHT_COMMITTED_CONFIG));
+        const std::wstring builtinUser = MakeFolder(root, L"user-builtin");
+        const std::wstring alteredUser = MakeFolder(root, L"user-altered");
+        tally.builtin_defaults = builtinUser + L"\\Defaults.ini";
+        tally.altered_defaults = alteredUser + L"\\Defaults.ini";
+        {
+            const Folders f = NextFolders(root);
+            cfg::ConfigOwner<Config> owner(Options(f.migration, tally.builtin_defaults));
+            if (owner.Load().status != cfg::ConfigLoadStatus::Created) Fail("first load", "the first load is not Created");
+            RemoveFolders(f);
+        }
+        WriteAlteredDefaults(tally);
 
         TestFrozenDefaults();
         TestRegistrationModel();
@@ -662,17 +1127,30 @@ int main(int argc, char** argv) {
             {"committed, 3040cc0", ReadInput("committed-3040cc0.ini")},
             {"first run, v0.3.0", firstRun},
         };
-        for (const auto& [name, bytes] : inputs) RunInput(root, name, bytes);
-        TestUnopenableFile(root, shipped);
+        for (const auto& [name, bytes] : inputs) RunInput(root, name, bytes, tally);
+        TestUnopenableFile(root, shipped, tally);
+
+        // Fresh equals upgrade: every file a release shipped, each version committed since and
+        // the one v0.3.0 wrote at first launch convert, over Defaults.ini at the built-in values,
+        // to the committed file, as no file is created as it.
+        for (const auto& [name, bytes] : inputs) {
+            if (!bytes || bytes->empty()) continue;
+            const Folders f = NextFolders(root);
+            const Migration m = Migrate(name, f.migration, bytes, false, tally.builtin_defaults);
+            if (m.bytes != tally.committed) {
+                Fail("fresh equals upgrade", name + " does not convert to the committed file");
+            }
+            RemoveFolders(f);
+        }
 
         const std::vector<IniMutation> corpus = GenerateIniMutations(shipped, legacy::ReadKeys(), CorpusKeys());
-        for (const IniMutation& m : corpus) RunInput(root, "corpus: " + m.name, m.bytes);
+        for (const IniMutation& m : corpus) RunInput(root, "corpus: " + m.name, m.bytes, tally);
 
         const auto codes = EveryHotkeyCode(shipped);
-        for (const auto& [name, bytes] : codes) RunInput(root, name, bytes);
+        for (const auto& [name, bytes] : codes) RunInput(root, name, bytes, tally);
 
         const auto nonFinite = NonFiniteFloats(shipped);
-        for (const auto& [name, bytes] : nonFinite) RunInput(root, name, bytes);
+        for (const auto& [name, bytes] : nonFinite) RunInput(root, name, bytes, tally);
 
         std::printf("%zu inputs, %zu of them from the corpus, %zu with every hotkey on one code and %zu with a "
                     "float that is not finite\n",
@@ -684,7 +1162,36 @@ int main(int argc, char** argv) {
             std::printf("  %s (%s): %d inputs\n    %s\n", d.id, d.commit, d.seen, d.what);
             if (d.seen == 0) Fail(d.id, "a listed difference no input shows");
         }
+        std::printf("comparison 2, the frozen reader against the migration, over Defaults.ini at the built-in values "
+                    "and changed: %d created, %d converted (%d holding a default row, %d a value), %zu distinct files\n",
+                    tally.created, tally.converted, tally.with_default_rows, tally.with_values, tally.migrated.size());
+        std::printf("  %d with a changed sensitivity or inversion dropped (pose_shaping)\n",
+                    tally.with_pose_shaping_dropped);
+        std::printf("  %d with [Crosshair] Show=false dropped (reticle)\n", tally.with_reticle);
+        std::printf("  %d with a hotkey code outside 0x01-0xFE unbound (N1)\n", tally.with_n1);
+        std::printf("  %d with a float that is not finite at the row's default (N2)\n", tally.with_n2);
+        if (tally.with_pose_shaping_dropped == 0) Fail("pose shaping", "no input drops a changed value");
+        if (tally.with_reticle == 0) Fail("reticle", "no input drops [Crosshair] Show=false");
+        if (tally.with_n1 == 0) Fail("N1", "no input unbinds an out-of-range code");
+        if (tally.with_n2 == 0) Fail("N2", "no input imports a float that is not finite as the default");
+        if (tally.with_default_rows == 0) Fail("default rows", "no import writes default");
+        if (tally.with_values == 0) Fail("values", "no import writes a value");
+        if (tally.migrated.count(tally.committed) == 0) Fail("first run", "no input migrated to the committed file");
 
+        wchar_t exe[MAX_PATH];
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        std::wstring lintDir(exe);
+        lintDir = lintDir.substr(0, lintDir.find_last_of(L'\\'));
+        lintDir = MakeFolder(lintDir, L"migrated");
+        int n = 0;
+        for (const std::string& file : tally.migrated) {
+            WriteBytes(lintDir + L"\\" + std::to_wstring(n++) + L".ini", file);
+        }
+
+        for (const std::wstring& user : {builtinUser, alteredUser}) {
+            EmptyFolder(user);
+            RemoveDirectoryW(user.c_str());
+        }
         RemoveDirectoryW(root.c_str());
     } catch (const std::exception& e) {
         std::printf("FAIL: %s\n", e.what());

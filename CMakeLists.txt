@@ -36,7 +36,6 @@ set(MOD_SOURCES
     src/core/logger.cpp
     src/core/config.cpp
     src/legacy_config/legacy_config.cpp
-    src/core/hotkey_utils.cpp
     src/core/path_utils.cpp
     src/core/rtti_utils.cpp
     src/core/sse_addresses.cpp
@@ -130,9 +129,29 @@ if(SKYRIMHT_BUILD_TESTS)
         add_dependencies(skyrimht_tests ${name})
     endfunction()
 
+    # The frozen legacy reader parses with the inih in extern/, and every test that compiles the
+    # config compiles it.
+    add_library(skyrimht_inih STATIC extern/ini.c)
+
+    set(SKYRIMHT_CONFIG_SOURCES
+        src/core/config.cpp
+        src/legacy_config/legacy_config.cpp
+        src/core/logger.cpp
+        src/core/path_utils.cpp
+    )
+
     # Behaviour lock for the 6DOF lean boundary, which is a pure function of the processed
-    # offsets.
-    skyrimht_add_test(skyrimht_lean_tests tests/lean_direction_tests.cpp)
+    # offsets, against the position settings this build hands the processor.
+    skyrimht_add_test(skyrimht_lean_tests tests/lean_direction_tests.cpp ${SKYRIMHT_CONFIG_SOURCES})
+    target_link_libraries(skyrimht_lean_tests PRIVATE skyrimht_inih)
+
+    # The committed HeadTracking.ini against the table, a first start, the toggles' saves and
+    # the legacy file's ANSI path. `--render-config <path>` makes it write the committed file
+    # instead (pixi run render-config).
+    skyrimht_add_test(skyrimht_config_tests tests/config_tests.cpp ${SKYRIMHT_CONFIG_SOURCES})
+    target_link_libraries(skyrimht_config_tests PRIVATE skyrimht_inih)
+    target_compile_definitions(skyrimht_config_tests PRIVATE
+        SKYRIMHT_COMMITTED_CONFIG=L"${CMAKE_CURRENT_SOURCE_DIR}/HeadTracking.ini")
 
     # The config differential test. The oracle is v0.3.0's reader (c3a1f7f), the newest
     # published build, copied byte for byte into tests/config_differential/oracle; renaming its
@@ -153,19 +172,23 @@ if(SKYRIMHT_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential)
     target_compile_definitions(skyrimht_config_oracle PRIVATE SkyrimHT=skyrim_oracle)
 
-    add_library(skyrimht_inih STATIC extern/ini.c)
-
     skyrimht_add_test(skyrimht_config_differential
         tests/config_differential/differential_tests.cpp
-        src/legacy_config/legacy_config.cpp
-        src/core/logger.cpp
-        src/core/path_utils.cpp
+        ${SKYRIMHT_CONFIG_SOURCES}
     )
     target_include_directories(skyrimht_config_differential PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential)
     target_compile_definitions(skyrimht_config_differential PRIVATE
-        SKYRIMHT_DIFFERENTIAL_INPUTS="${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/inputs")
+        SKYRIMHT_DIFFERENTIAL_INPUTS="${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/inputs"
+        SKYRIMHT_COMMITTED_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/HeadTracking.ini")
     target_link_libraries(skyrimht_config_differential PRIVATE skyrimht_config_oracle skyrimht_inih)
+
+    # Core's canonical config lint over the committed file and every file the differential
+    # test migrated, which it writes beside itself under migrated\.
+    add_test(NAME skyrimht_config_lint COMMAND node
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/lint-migrated.mjs
+        $<TARGET_FILE_DIR:skyrimht_config_differential>/migrated)
+    set_tests_properties(skyrimht_config_lint PROPERTIES DEPENDS skyrimht_config_differential)
 
     # The frozen reader, the sources it compiles, the oracle and the inputs against the hashes
     # tests/config_differential/frozen.tsv records.

@@ -23,14 +23,12 @@ $projectRoot = Split-Path -Parent $scriptDir
 Import-Module (Join-Path $projectRoot "cameraunlock-core\powershell\DevDeploy.psm1") -Force
 Import-Module (Join-Path $projectRoot "cameraunlock-core\powershell\ModDeployment.psm1") -Force
 $buildOutput = Join-Path $projectRoot "bin\$Configuration"
-$configFile = Join-Path $projectRoot 'HeadTracking.ini'
 $vendorLoader = Join-Path $projectRoot 'vendor\ultimate-asi-loader\dinput8.dll'
 $result = Invoke-DevDeployASILoader `
     -GameId 'skyrim-special-edition' `
     -GameDisplayName 'Skyrim Special Edition' `
     -BuildOutputPath $buildOutput `
     -ModDllName 'SkyrimSEHeadTracking.asi' `
-    -ConfigFile $configFile `
     -VendorLoaderDll $vendorLoader `
     -AsiLoaderName 'dinput8.dll' `
     -ExtraDlls @() `

@@ -4,6 +4,12 @@
 
 An unofficial head tracking mod for Skyrim Special Edition that moves the view with your head while your mouse or controller keeps aiming, driven by OpenTrack over UDP, with no VR headset required.
 
+> **Updating from 0.3.0 or earlier?** Settings now live in `CameraUnlock.ini`, next to
+> `SkyrimSE.exe`. The first start of this version copies your settings over from
+> `HeadTracking.ini` and leaves that file as it was. The sensitivity, axis inversion and
+> `[Crosshair] Show` settings are gone, and the tracking mode and yaw mode you pick in game
+> are now kept for the next launch. [Configuration](#configuration) has the details.
+
 ## Features
 
 - **Decoupled look and aim** - head tracking moves the view; the game's aim stays on your mouse or controller
@@ -50,7 +56,7 @@ For users on Nexus Mods or anyone who prefers to drop files in by hand:
 1. Grab the `-nexus.zip` variant from the Releases page
 2. Copy the contents of the `Root/` folder (`SkyrimSEHeadTracking.asi`) into your Skyrim SE directory, next to `SkyrimSE.exe`
 
-`HeadTracking.ini` is written automatically next to `SkyrimSE.exe` on first launch - there's no need to copy it in, and it isn't bundled so updates never overwrite your settings.
+`CameraUnlock.ini` is written automatically next to `SkyrimSE.exe` on first launch - there's no need to copy it in, and it isn't bundled so updates never overwrite your settings.
 
 **Mod Organizer 2:** install the `-nexus.zip` as a normal mod. The `Root/` folder is handled by the Root Builder plugin, which deploys it to the game root. Without Root Builder, install manually as above - MO2's virtual file system only covers `Data/`, not the game root where `.asi` files must live.
 
@@ -117,7 +123,8 @@ view sits off to one side, centre it in the tracker.
 
 ## Controls
 
-Two equivalent binding sets - use whichever your keyboard has:
+Each action has a list of keys in `CameraUnlock.ini`, and any of them triggers it. The
+defaults are a nav-cluster key and a Ctrl+Shift chord, so use whichever your keyboard has:
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
@@ -134,49 +141,116 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 `Page Down` / `Ctrl+Shift+H` switches between horizon-locked yaw (default) and camera-local yaw.
 
+The tracking mode and the yaw mode are saved to `CameraUnlock.ini` the moment you change
+them, so the next launch starts with the same choice. `End` changes the current session
+only: at startup tracking is on or off as `EnableOnStartup` says.
+
 ## Configuration
 
-The mod writes `HeadTracking.ini` next to `SkyrimSE.exe` on first launch. Edit it to customize:
+<!-- cameraunlock:config -->
+The mod reads its settings from `CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
+
+A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it, and neither do earlier versions of this mod. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+
+`Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
+
+When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app. The mod never changes `Defaults.ini` after that. Edit it with any text editor.
+
+Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.
+
+A setting that the defaults below set to `default` is written as `default` when the value imported for it equals its default at that start, which is the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none. It then follows `Defaults.ini`. Every other setting is written with the value imported for it. `RotationEnabled` and `PositionEnabled` are one setting here, the tracking mode, so both are written as `default` or neither is.
+
+Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
+
+- Reticle settings, and a key that toggled the reticle.
+- A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
+- The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
+
+An older version of the mod reads `HeadTracking.ini` and never reads `CameraUnlock.ini`, so a setting you change after updating is not in `HeadTracking.ini`.
+
+Deleting only `CameraUnlock.ini` makes the next start read `HeadTracking.ini` again. To go back to the defaults, replace everything in `CameraUnlock.ini` with the defaults below. Every setting they set to `default` then follows `Defaults.ini`.
+
+The built-in value of each setting set to `default` below:
+
+- `UdpPort=4242`
+- `EnableOnStartup=true`
+- `WorldSpaceYaw=true`
+- `RotationEnabled=true`
+- `LocalSmoothing=0.0`
+- `RemoteSmoothing=0.15`
+- `PositionEnabled=true`
+- `PositionLimitX=0.3`
+- `PositionLimitY=0.2`
+- `PositionLimitYDown=0.2`
+- `PositionLimitZ=0.4`
+- `PositionLimitZBack=0.1`
+- `ToggleKey=End, Ctrl+Shift+Y`
+- `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
+- `YawModeKey=PageDown, Ctrl+Shift+H`
+
+With every setting at its default, the file reads:
 
 ```ini
+; Skyrim Special Edition head tracking settings.
+; Comments start with ; and go on their own line. Text after a value is part of the value.
+; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
+; A setting set to default takes its value from Defaults.ini, which every head tracking mod
+; that keeps its settings in CameraUnlock.ini reads: %AppData%\CameraUnlock\Defaults.ini on
+; Windows, $XDG_CONFIG_HOME/CameraUnlock/Defaults.ini (normally ~/.config/CameraUnlock) on
+; Linux, under Wine and Proton too, and ~/Library/Application Support/CameraUnlock/Defaults.ini
+; on macOS. The log names the file it read. Write a value instead of default to change that
+; setting for this game only.
+
+[CameraUnlock]
+; Written by the mod. Leave this section in place.
+ConfigFormat=1
+
 [Network]
-UDPPort=4242              ; UDP port for tracker data (1024-65535)
-
-[Sensitivity]
-YawMultiplier=1.0         ; Horizontal rotation sensitivity (0.1-5.0)
-PitchMultiplier=1.0       ; Vertical rotation sensitivity (0.1-5.0)
-RollMultiplier=1.0        ; Head tilt sensitivity (0.0-2.0)
-LocalSmoothing=0.0        ; Smoothing for a tracker on this PC (0.0-1.0)
-RemoteSmoothing=0.15      ; Smoothing for a tracker on the network (0.0-1.0)
-
-[Position]
-SensitivityX=1.0          ; Lateral position sensitivity (0.1-10.0)
-SensitivityY=1.0          ; Vertical position sensitivity (0.1-10.0)
-SensitivityZ=1.0          ; Depth position sensitivity (0.1-10.0)
-LimitX=0.30               ; Max lateral offset in meters
-LimitY=0.20                ; Max vertical offset in meters
-LimitZ=0.40                ; Max forward offset in meters
-LimitZBack=0.10           ; Max backward offset (prevents camera clipping)
-InvertX=true              ; Invert lateral axis
-InvertY=false             ; Invert vertical axis
-; InvertZ is for a tracker that sends depth backwards, not for a lean that
-; feels reversed. It is applied before the LimitZ / LimitZBack clamp, so
-; turning it on also swaps the travel budgets to 0.10m forward and 0.40m back.
-InvertZ=false
-Enabled=true              ; Enable 6DOF (set false for rotation-only 3DOF)
-
-[Hotkeys]
-ToggleKey=0x23            ; End key (virtual key code in hex)
-PositionToggleKey=0x21    ; Page Up key
-YawModeKey=0x22           ; Page Down key - toggle world/local yaw
+; UDP port the mod receives tracker data on (OpenTrack protocol).
+UdpPort=default
 
 [General]
-AutoEnable=true           ; Start tracking when the game launches
-ShowNotifications=true    ; Write status messages to HeadTracking.log
-WorldSpaceYaw=true        ; true = horizon-locked yaw (default), false = camera-local
-```
+; true: head tracking is on when the game starts. ToggleKey turns it on and off.
+EnableOnStartup=default
+; true: yaw turns around the world's up axis. false: around the camera's own up axis.
+WorldSpaceYaw=default
+; true: turning your head turns the view.
+; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
+RotationEnabled=default
+; true: write the mod's notices (tracking on or off, a mode change) to HeadTracking.log.
+ShowNotifications=true
 
-Delete the file to reset to defaults.
+[Smoothing]
+; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
+LocalSmoothing=default
+; Smoothing when the tracker is another device on the network, such as a phone.
+; 0 is the least, 1 the most.
+RemoteSmoothing=default
+
+[Position]
+; true: moving your head moves the view.
+; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
+PositionEnabled=default
+; How far, in metres, leaning left or right can move the view.
+PositionLimitX=default
+; How far, in metres, raising your head can move the view.
+PositionLimitY=default
+; How far, in metres, lowering your head can move the view.
+PositionLimitYDown=default
+; How far, in metres, leaning forward can move the view.
+PositionLimitZ=default
+; How far, in metres, leaning back can move the view.
+PositionLimitZBack=default
+
+[Hotkeys]
+; Turns head tracking on and off.
+ToggleKey=default
+; Changes the tracking mode: rotation and position, rotation only, position only.
+CycleTrackingModeKey=default
+; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
+YawModeKey=default
+```
+<!-- /cameraunlock:config -->
 
 ## Troubleshooting
 
@@ -191,8 +265,8 @@ Delete the file to reset to defaults.
 **No tracking response:**
 
 - Ensure your tracker is running and outputting data
-- Verify the UDP port matches in both tracker and `HeadTracking.ini`
-- Press **End** to enable tracking if `AutoEnable` is off
+- Verify the UDP port matches in both tracker and `CameraUnlock.ini` (`UdpPort`)
+- Press **End** to enable tracking if `EnableOnStartup` is off
 - Check that your firewall isn't blocking UDP port 4242
 
 **View is off-centre:**
@@ -201,16 +275,13 @@ Delete the file to reset to defaults.
 
 **Jittery or unstable tracking:**
 
-- Increase filtering in your tracker software, or raise `LocalSmoothing` (tracker on this PC) / `RemoteSmoothing` (tracker on the network) in `HeadTracking.ini`
-- Reduce sensitivity multipliers in `HeadTracking.ini`
+- Increase filtering in your tracker software, or raise `LocalSmoothing` (tracker on this PC) / `RemoteSmoothing` (tracker on the network) in `CameraUnlock.ini`
 - Improve lighting for webcam-based tracking
 - If you're streaming from a phone over WiFi, some jitter is expected; send via a wired hotspot or switch to webcam tracking for the smoothest signal
 
-**Wrong rotation axis (head rotates the view the wrong way):**
+**Wrong rotation axis (head rotates or leans the view the wrong way):**
 
-- Flip `[Position] InvertX` or `InvertY` if a lateral or vertical lean moves the view the wrong way
-- `InvertZ` is for a tracker that sends depth backwards, not for a lean that feels reversed. It is applied before the `LimitZ` / `LimitZBack` clamp, so switching it on also swaps the travel budgets to 0.10m forward and 0.40m back
-- For rotation axes, flip the sign on the sensitivity multiplier (e.g. `PitchMultiplier=-1.0`)
+- The mod has no sensitivity or axis inversion settings: it applies the pose your tracker sends. Invert the axis, or change its sensitivity, in your tracker app (OpenTrack's **Mapping** and **Options** windows have both)
 - Centre in your tracker app after changing signs so the new orientation is taken as the neutral pose
 
 **Yaw feels wrong when looking up or down at extreme angles:**
@@ -219,11 +290,11 @@ Delete the file to reset to defaults.
 
 ## Updating
 
-Download the new release and run `install.cmd` again. Your config is preserved.
+Download the new release and run `install.cmd` again. Your `CameraUnlock.ini` is preserved.
 
 ## Uninstalling
 
-Run `uninstall.cmd` from the release folder. This removes the mod DLLs. Ultimate ASI Loader (`dinput8.dll`) is only removed if the installer originally put it there. To remove it anyway:
+Run `uninstall.cmd` from the release folder. This removes the mod DLLs and leaves `CameraUnlock.ini`, and `HeadTracking.ini` from an earlier version, in place. Ultimate ASI Loader (`dinput8.dll`) is only removed if the installer originally put it there. To remove it anyway:
 
 ```
 uninstall.cmd /force
@@ -232,7 +303,7 @@ uninstall.cmd /force
 To remove manually, delete these files from your Skyrim SE directory:
 
 - `SkyrimSEHeadTracking.asi`
-- `HeadTracking.ini`
+- `CameraUnlock.ini`, and `HeadTracking.ini` from an earlier version (if present)
 - `HeadTracking.log` and `HeadTracking.prev.log` (if present)
 - `dinput8.dll` (only if you also want to remove the ASI Loader)
 

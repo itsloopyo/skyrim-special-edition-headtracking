@@ -34,6 +34,11 @@ build-release = { cmd = "cmake --build build --config Release", depends-on = ["s
 test = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1"
 build-tests = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -BuildOnly"
 
+# Rewrites HeadTracking.ini, the committed config, from the config table after a change to a
+# row, a comment or a default, then writes the launcher manifest's config descriptor per_game
+# from it. The config tests fail until it has run.
+render-config = { cmd = "build-tests/tests/Debug/skyrimht_config_tests.exe --render-config HeadTracking.ini && node cameraunlock-core/scripts/encode-seed.mjs", depends-on = ["build-tests"] }
+
 # Deploy release build to game directory
 install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build-release"] }
 
@@ -52,6 +57,10 @@ clean-all = { cmd = """
 
 # Package release ZIP
 package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release", "test"] }
+
+# Core's manifest validator: the launcher manifest and the Nexus ZIP of the newest package in
+# release/, which it reads, hence the dependency.
+validate-manifest = { cmd = "node cameraunlock-core/scripts/validate-manifest.mjs", depends-on = ["package"] }
 
 # Automated release workflow
 release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1" }
