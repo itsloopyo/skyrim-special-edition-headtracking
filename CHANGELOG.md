@@ -41,7 +41,7 @@
 ### Removed
 
 - The sensitivity, scale, deadzone, response curve and axis inversion settings: `[Sensitivity] YawMultiplier`, `PitchMultiplier` and `RollMultiplier`, and `[Position] SensitivityX`, `SensitivityY`, `SensitivityZ`, `InvertX`, `InvertY` and `InvertZ`. Set these in your tracker app instead. The x inversion every earlier version shipped switched on (`InvertX=true`) is now part of how the mod converts the tracker's axes to the game's, so leaning left and right goes the same way it did.
-- Every file 0.1.0 to 0.3.0 shipped or wrote set `InvertZ=true`, which is what made depth run backwards. The import drops it like any other inversion, so after updating depth runs the fixed way described under Fixed, whatever your old file said. The other sensitivity and inversion settings shipped at the same defaults in every copy (installer, launcher seed and first-run file), and with those at their shipped defaults the camera moves as it did before.
+- Every file 0.1.0 to 0.3.0 shipped or wrote set `InvertZ=true`, which is what made depth run backwards. The other inversions are built into the mod at the values those versions shipped, but `InvertZ=true` is dropped even though it was the shipped value, so after updating depth runs the fixed way described under Fixed, whatever your old file said. If you had set `InvertZ=false` yourself, depth already ran that way and does not change. The other sensitivity and inversion settings shipped at the same defaults in every copy (installer, launcher seed and first-run file), and with those at their shipped defaults the camera moves as it did before.
 - `[Crosshair] Show`. The game's crosshair now always moves to follow your aim while head tracking is on. `Show=false` in an old file is not carried over.
 
 ### Added

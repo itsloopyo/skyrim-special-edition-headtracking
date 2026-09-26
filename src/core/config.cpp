@@ -69,9 +69,10 @@ cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
     out.position.limit_z_back = finite(c.positionLimitZBack, defaults.position.limit_z_back, "Position", "LimitZBack");
 
     // Every sensitivity shipped at 1.0, identity. InvertX shipped true, and that inversion is
-    // now the x negation in CameraLocalLeanOffset. InvertY shipped false, and so has InvertZ
-    // since b285051 moved the depth sign to that boundary. A value the player changed is
-    // dropped.
+    // now the x negation in CameraLocalLeanOffset. InvertY shipped false. Every release shipped
+    // InvertZ true, which ran depth backwards; 3b1145b fixed the direction in that boundary for
+    // InvertZ false, the default b285051 set, so InvertZ is measured against false and a
+    // published true is dropped. A value the player changed is dropped.
     const auto shape = [&](auto value, auto shipped, const char* section, const char* key) {
         cfg::LegacyPoseShaping(value, shipped, section, key, shaping, dropped);
     };

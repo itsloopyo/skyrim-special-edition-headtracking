@@ -644,8 +644,9 @@ void CheckNoShaping(const std::string& name, const Config& c) {
 }
 
 // Every sensitivity and inversion the frozen reader read is listed in its place, folded where
-// it holds what the build shipped and dropped as PoseShaping where it does not. Returns how
-// many were dropped.
+// it holds what the build shipped and dropped as PoseShaping where it does not. InvertZ is the
+// exception, as in the import: it is held to false, the fixed direction, not to the true every
+// release shipped, so a published true is dropped. Returns how many were dropped.
 int CheckPoseShaping(const std::string& name, const legacy::Config& c, const cfg::ImportResult& result) {
     struct Read {
         const char* section;
