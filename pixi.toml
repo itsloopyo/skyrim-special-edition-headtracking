@@ -69,4 +69,7 @@ release = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"
 show-changelog = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/show-changelog.ps1" }
 
 [dependencies]
-# No pixi dependencies - using system CMake and Visual Studio
+# CMake and Visual Studio come from the system. Node runs core's canonical config lint in
+# `test`, which `package` depends on, and render-config and validate-manifest; pinned to the
+# release cameraunlock-core's own lock resolves.
+nodejs = "==26.5.0"
