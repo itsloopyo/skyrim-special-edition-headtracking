@@ -12,6 +12,7 @@
 #include "hooks/projectile_hook.h"
 #include "ui/notification.h"
 #include "ui/crosshair_overlay.h"
+#include "legacy_config/legacy_config.h"
 
 namespace SkyrimHT {
 
@@ -197,12 +198,37 @@ bool Mod::LoadConfig() {
         return false;
     }
 
-    if (!m_config.Load(configPath.c_str())) {
+    legacy::Config c;
+    if (legacy::Read(configPath.c_str(), c) == legacy::ReadStatus::Absent) {
         m_config.SetDefaults();
         m_config.Save(configPath.c_str());
         return false;
     }
 
+    m_config.udpPort = c.udpPort;
+    m_config.yawMultiplier = c.yawMultiplier;
+    m_config.pitchMultiplier = c.pitchMultiplier;
+    m_config.rollMultiplier = c.rollMultiplier;
+    m_config.localSmoothing = c.localSmoothing;
+    m_config.remoteSmoothing = c.remoteSmoothing;
+    m_config.toggleKey = c.toggleKey;
+    m_config.positionToggleKey = c.positionToggleKey;
+    m_config.yawModeKey = c.yawModeKey;
+    m_config.positionSensitivityX = c.positionSensitivityX;
+    m_config.positionSensitivityY = c.positionSensitivityY;
+    m_config.positionSensitivityZ = c.positionSensitivityZ;
+    m_config.positionLimitX = c.positionLimitX;
+    m_config.positionLimitY = c.positionLimitY;
+    m_config.positionLimitZ = c.positionLimitZ;
+    m_config.positionLimitZBack = c.positionLimitZBack;
+    m_config.positionInvertX = c.positionInvertX;
+    m_config.positionInvertY = c.positionInvertY;
+    m_config.positionInvertZ = c.positionInvertZ;
+    m_config.positionEnabled = c.positionEnabled;
+    m_config.autoEnable = c.autoEnable;
+    m_config.showNotifications = c.showNotifications;
+    m_config.worldSpaceYaw = c.worldSpaceYaw;
+    m_config.showCrosshair = c.showCrosshair;
     return true;
 }
 

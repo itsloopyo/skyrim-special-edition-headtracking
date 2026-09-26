@@ -1,0 +1,40 @@
+# The config differential test's record: the published build, the frozen legacy reader, the
+# sources it compiles, and the oracle and inputs the test measures it against.
+# check-frozen.ps1 fails when a working-tree path below stops matching its hash. Rows naming
+# <commit>:<path> are provenance, the blobs the oracle and the import were taken from, and are
+# not checked.
+#
+# Published builds: v0.1.0 (4e7652a), v0.1.1 (ee67d3a), v0.2.0 (86c0280) and v0.3.0 (c3a1f7f,
+# cameraunlock-core 3465659), each a GitHub release with an installer and a Nexus ZIP. No dev
+# pre-release. The oracle is v0.3.0's reader. The frozen reader is src/core/config.cpp's reading
+# half as of 9196981 (cameraunlock-core 3f3a821), which is v0.3.0's config.cpp byte for byte;
+# its config.h differs from v0.3.0's in where six defaults are spelled (core's constants, the same
+# values) and in the value of one, InvertZ.
+#
+# path	sha256	what
+src/legacy_config/legacy_config.h	07146dc6d8bfc05765912b06de3f16339c11feed48e1d22c6ca16c32cfdf727a	the frozen reader
+src/legacy_config/legacy_config.cpp	6c2a0af255c42fe35d009ff8ddd1d23999aec28c2e9638d19aa1e38564357e4f	the frozen reader
+extern/ini.c	58c1489b0287a5a89784ef0ac85095b46a3fc4cd71b050f3c01600e0edb6a3dd	compiled by the import and the oracle; the same bytes at v0.1.0, v0.3.0 and 9196981
+extern/ini.h	478e555a70725549b2066dbac49b740443069506694d3a40f7a202b8c44b09ed	compiled by the import and the oracle; the same bytes at v0.1.0, v0.3.0 and 9196981
+tests/config_differential/oracle/src/pch.h	3e6b98992eb661a21b4f4159b6d20318704eb612e94c035bd7f2a053de56eaca	the oracle; v0.3.0:src/pch.h byte for byte
+tests/config_differential/oracle/src/core/config.h	474b396bf680e9cd1914f3e005dd99b3ff1b2d866ae8de9f9c1924f8a80f0c8b	the oracle; v0.3.0:src/core/config.h byte for byte
+tests/config_differential/oracle/src/core/config.cpp	5f823f7f29ff164928be3222cdbc37e6247e4a120e50dda283a96c62d2a18f3d	the oracle; v0.3.0:src/core/config.cpp byte for byte
+tests/config_differential/oracle/src/core/constants.h	f7d3226dc4d8af47e27661264afbe4daf0b1181eb5a1d9f59be86a84720ae3db	the oracle; v0.3.0:src/core/constants.h byte for byte
+tests/config_differential/oracle/src/core/logger.h	ca604f3e098fa7556147eecf5806506cb64a3e267e01ca79ad07e8eeeb1f870b	the oracle; v0.3.0:src/core/logger.h byte for byte
+tests/config_differential/oracle/src/core/logger.cpp	1da653bb484dbf6b452396073b9a1e3e6e009b7c5e19bb8cff2ac92b24064aa0	the oracle; v0.3.0:src/core/logger.cpp byte for byte
+tests/config_differential/oracle/src/core/path_utils.h	7167854681d9005bb171c67a9fa04212f781ca9359a31c57735986dd0150ff77	the oracle; v0.3.0:src/core/path_utils.h byte for byte
+tests/config_differential/oracle/src/core/path_utils.cpp	19c7e733bab1be5c9f90958ddc3097a85c5a4a05f19ae6c9174cac2c247709b8	the oracle; v0.3.0:src/core/path_utils.cpp byte for byte
+tests/config_differential/inputs/shipped-v0.1.0.ini	6237dab2ea8bb38538c7e995ee17c6121ff9b27ac0c806f2f49f677cca43e04d	76fbab7:HeadTracking.ini, the plugins/HeadTracking.ini of the v0.1.0, v0.1.1 and v0.2.0 installer ZIPs and the launcher seed of v0.1.1 and v0.2.0, byte for byte
+tests/config_differential/inputs/shipped-v0.3.0.ini	fd8a686d93836e53e5fa1a6bd8cfe012903f89bd68e7c2ee3b5dcdfc9ac24eab	bf36739:HeadTracking.ini, the plugins/HeadTracking.ini of the v0.3.0 installer ZIP and its launcher seed, byte for byte
+tests/config_differential/inputs/committed-b285051.ini	ffb5c066094f8f2fd38e7c062e7e5e3d607c8229a870f45546fee74204b3364e	b285051:HeadTracking.ini, committed after v0.3.0
+tests/config_differential/inputs/committed-3040cc0.ini	1968686e5629277e8ae8cb9fc336012798b0562f3e1e1efae48bbc328bb1b778	3040cc0:HeadTracking.ini, committed after v0.3.0 and the file at 9196981
+tests/config_differential/inputs/first-run-v0.3.0.ini	f59be5ee40d1f3287025b1e359a5d08ee051a59632710a6746a78c397a220846	the first-run output of v0.3.0, extracted once from the oracle with --first-run
+v0.3.0:HeadTracking.ini	fd8a686d93836e53e5fa1a6bd8cfe012903f89bd68e7c2ee3b5dcdfc9ac24eab	published source
+v0.3.0:src/core/config.h	474b396bf680e9cd1914f3e005dd99b3ff1b2d866ae8de9f9c1924f8a80f0c8b	published source
+v0.3.0:src/core/config.cpp	5f823f7f29ff164928be3222cdbc37e6247e4a120e50dda283a96c62d2a18f3d	published source
+v0.3.0:src/core/mod.cpp	51748e04000000c9a3c00bef7c9dffbf3e732380a95329c4921797b66303444b	published source
+v0.3.0:src/hooks/input_hook.cpp	8266378596402daeda7445ecfff8ced43f95a91de2cf8545f892bf6e110ff35f	published source
+9196981:src/core/config.h	4c1fb546a9bb458dfed29ace04ddeb0d93bdb27d5b920c98b3378276ca00057b	the reader the import was frozen from, and the startup code and hotkey registration beside it
+9196981:src/core/config.cpp	5f823f7f29ff164928be3222cdbc37e6247e4a120e50dda283a96c62d2a18f3d	the reader the import was frozen from, and the startup code and hotkey registration beside it
+9196981:src/core/mod.cpp	51883b935e0dc5d00d6d163680d01eb6b92dcfdee16438410e22102253712a98	the reader the import was frozen from, and the startup code and hotkey registration beside it
+9196981:src/hooks/input_hook.cpp	cae737f79b9ceaf68a88adadf06cafaf0d4db430e41c747116f36b47f5d5c511	the reader the import was frozen from, and the startup code and hotkey registration beside it
