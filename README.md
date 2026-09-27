@@ -2,16 +2,7 @@
 
 ![Skyrim Special Edition running with this mod](https://raw.githubusercontent.com/itsloopyo/skyrim-special-edition-headtracking/main/assets/readme-clip.gif)
 
-An unofficial head tracking mod for Skyrim Special Edition that moves the view with your head while your mouse or controller keeps aiming, driven by OpenTrack over UDP, with no VR headset required.
-
-> **Updating from 0.3.0 or earlier?** Settings now live in `CameraUnlock.ini`, next to
-> `SkyrimSE.exe`. The first start of this version copies your settings over from
-> `HeadTracking.ini` and leaves that file as it was. The sensitivity, axis inversion and
-> `[Crosshair] Show` settings are gone, and the tracking mode and yaw mode you pick in game
-> are now kept for the next launch. Leaning in and out ran backwards in 0.3.0 and earlier,
-> with the forward and backward lean limits swapped; it now runs the right way for
-> everyone, including an old `HeadTracking.ini` that says `InvertZ=true`.
-> [Configuration](#configuration) has the details.
+An unofficial head tracking mod for Skyrim Special Edition that moves the view with your head while your mouse or controller keeps aiming, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
