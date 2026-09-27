@@ -16,6 +16,7 @@ namespace SkyrimHT {
 namespace {
 
 namespace cfg = cameraunlock::config;
+using C = cfg::schema::Concept;
 using cameraunlock::input::KeyBinding;
 using cameraunlock::input::KeyModifiers;
 
@@ -93,14 +94,34 @@ cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
     out.cycle_tracking_mode_key_name = KeyList(c.positionToggleKey, 'G', "PositionToggleKey", dropped);
     out.yaw_mode_key_name = KeyList(c.yawModeKey, 'H', "YawModeKey", dropped);
 
-    return status == legacy::ReadStatus::Absent ? cfg::ImportResult::Absent(std::move(dropped), std::move(shaping))
-                                                : cfg::ImportResult::Imported(std::move(dropped), std::move(shaping));
+    // A setting the player never changed from what the builds before shipped follows Defaults.ini.
+    // LimitY stood for both vertical bounds, and each hotkey code for its row, the chord beside it
+    // having been fixed.
+    const legacy::Config shipped;
+    cfg::LegacyFollowsDefaultsIni follows;
+    follows.Setting(C::UdpPort, c.udpPort, shipped.udpPort);
+    follows.Setting(C::EnableOnStartup, c.autoEnable, shipped.autoEnable);
+    follows.Setting(C::WorldSpaceYaw, c.worldSpaceYaw, shipped.worldSpaceYaw);
+    follows.TrackingMode(c.positionEnabled, shipped.positionEnabled);
+    follows.Setting(C::LocalSmoothing, c.localSmoothing, shipped.localSmoothing);
+    follows.Setting(C::RemoteSmoothing, c.remoteSmoothing, shipped.remoteSmoothing);
+    follows.Setting(C::PositionLimitX, c.positionLimitX, shipped.positionLimitX);
+    follows.Setting(C::PositionLimitY, c.positionLimitY, shipped.positionLimitY);
+    follows.Setting(C::PositionLimitYDown, c.positionLimitY, shipped.positionLimitY);
+    follows.Setting(C::PositionLimitZ, c.positionLimitZ, shipped.positionLimitZ);
+    follows.Setting(C::PositionLimitZBack, c.positionLimitZBack, shipped.positionLimitZBack);
+    follows.Setting(C::ToggleKey, c.toggleKey, shipped.toggleKey);
+    follows.Setting(C::CycleTrackingModeKey, c.positionToggleKey, shipped.positionToggleKey);
+    follows.Setting(C::YawModeKey, c.yawModeKey, shipped.yawModeKey);
+
+    return status == legacy::ReadStatus::Absent
+               ? cfg::ImportResult::Absent(std::move(dropped), std::move(shaping), follows.Concepts())
+               : cfg::ImportResult::Imported(std::move(dropped), std::move(shaping), follows.Concepts());
 }
 
 }  // namespace
 
 cfg::ConfigTable<Config> MakeConfigTable() {
-    using C = cfg::schema::Concept;
     cfg::ConfigTable<Config> table = cfg::HeadTrackingConfigTable<Config>(
         {C::UdpPort, C::EnableOnStartup, C::WorldSpaceYaw, C::RotationEnabled, C::LocalSmoothing,
          C::RemoteSmoothing, C::PositionEnabled, C::PositionLimitX, C::PositionLimitY, C::PositionLimitYDown,

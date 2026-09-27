@@ -19,13 +19,22 @@
 // the shipped InvertX=true is the x negation at the engine boundary now, which
 // lean_direction_tests holds bit for bit. [Crosshair] Show=false is dropped (reticle): the
 // game's crosshair always follows the aim now. A hotkey code outside 0x01-0xFE imports as
-// unbound (N1), and a float the reader let through as NaN imports as the row's default (N2).
+// unbound (N1), as does one on a Ctrl, Shift or Alt key alone (N3), and a float the reader let
+// through as NaN imports as the row's default (N2).
 // The frozen reader clamps every other number into a range the canonical rows hold, so no
 // input is deferred for a value.
 //
+// A row the player never changed from what the builds before shipped follows Defaults.ini: the
+// import lists it in follows_defaults_ini and the migration writes it default, the tracking mode
+// pair as one unit. The test derives that list from what the frozen reader read, a row whose
+// every value is the shipped default, and holds the import's list to it on every input. Every
+// file a release shipped or wrote and each version committed since list every row.
+//
 // Comparison 2 runs over two Defaults.ini files, one at the built-in values and one a player
-// changed, since the migration writes default exactly where the imported value equals what
-// Defaults.ini gives. After every load HeadTracking.ini keeps its bytes, its write time and its
+// changed on every row. Over the built-in one the session starts as the import read, since the
+// shipped defaults are the built-in values. Over the changed one a row the player never changed
+// is written default and takes that file's value, and a changed row keeps the player's. After
+// every load HeadTracking.ini keeps its bytes, its write time and its
 // attribute, Defaults.ini is never written, and the folder holds the legacy file and
 // CameraUnlock.ini and nothing else. The next load reads CameraUnlock.ini, imports nothing and
 // writes nothing, and a read-only legacy file imports as a writable one does. The distinct
@@ -81,6 +90,7 @@ using cameraunlock::TrackingMode;
 using cameraunlock::config::testing::GenerateIniMutations;
 using cameraunlock::config::testing::IniMutation;
 using cameraunlock::config::testing::MutationKey;
+using cfg::schema::Concept;
 using cameraunlock::input::KeyModifiers;
 
 int g_failures = 0;
@@ -525,14 +535,19 @@ const cfg::DroppedValue* FindDrop(const std::vector<cfg::DroppedValue>& dropped,
     return nullptr;
 }
 
-// A hotkey code outside 0x01-0xFE imports as unbound (N1), and only then is it dropped. Code 0
-// never fired on the published build's poller and imports as unbound, unrecorded.
+// A hotkey code outside 0x01-0xFE imports as unbound (N1), as does a Ctrl, Shift or Alt key
+// alone (N3), and only then is it dropped. Code 0 never fired on the published build's poller
+// and imports as unbound, unrecorded.
 bool KeyKept(const std::string& name, int vk, const char* key, const std::vector<cfg::DroppedValue>& dropped) {
     const bool outOfRange = vk != 0 && (vk < 0x01 || vk > 0xFE);
+    const bool modifier = (vk >= 0x10 && vk <= 0x12) || (vk >= 0xA0 && vk <= 0xA5);
     if (outOfRange != (FindDrop(dropped, cfg::DropRule::KeyCodeOutOfRange, "Hotkeys", key) != nullptr)) {
         Fail(name, std::string("[Hotkeys] ") + key + " dropped as out of range does not match its code");
     }
-    return vk != 0 && !outOfRange;
+    if (modifier != (FindDrop(dropped, cfg::DropRule::ModifierKey, "Hotkeys", key) != nullptr)) {
+        Fail(name, std::string("[Hotkeys] ") + key + " dropped as a modifier key does not match its code");
+    }
+    return vk != 0 && !outOfRange && !modifier;
 }
 
 // A float the frozen reader left NaN imports as the row's default (N2), and only then is it
@@ -547,7 +562,8 @@ uint32_t FiniteOrDefault(const std::string& name, float value, float rowDefault,
 }
 
 // Mod::Initialize and RegisterBindings as commit A ran them, with the approved changes applied:
-// a NaN the reader let through is the row's default (N2), and a code N1 unbinds is not registered.
+// a NaN the reader let through is the row's default (N2), and a code N1 or N3 unbinds is not
+// registered.
 Start FromImport(const std::string& name, const legacy::Config& c, const std::vector<cfg::DroppedValue>& dropped) {
     const Config defaults = SkyrimHT::MakeConfigTable().defaults();
     Start s;
@@ -688,17 +704,116 @@ int CheckPoseShaping(const std::string& name, const legacy::Config& c, const cfg
 void CheckDropRules(const std::string& name, const legacy::Config& c, const cfg::ImportResult& result) {
     for (const cfg::DroppedValue& d : result.dropped) {
         const bool approved = d.rule == cfg::DropRule::PoseShaping || d.rule == cfg::DropRule::KeyCodeOutOfRange ||
-                              d.rule == cfg::DropRule::NonFiniteNumber || d.rule == cfg::DropRule::Reticle;
+                              d.rule == cfg::DropRule::ModifierKey || d.rule == cfg::DropRule::NonFiniteNumber ||
+                              d.rule == cfg::DropRule::Reticle;
         if (!approved) Fail(name, "the import drops [" + d.section + "] " + d.key + " by a rule this map never applies");
     }
     const bool reticle = FindDrop(result.dropped, cfg::DropRule::Reticle, "Crosshair", "Show") != nullptr;
     if (reticle != !c.showCrosshair) Fail(name, "[Crosshair] Show dropped does not match its value");
 }
 
+// Every row the table binds that follows Defaults.ini.
+const std::set<Concept>& AllRows() {
+    static const std::set<Concept> all = {
+        Concept::UdpPort,         Concept::EnableOnStartup,    Concept::WorldSpaceYaw,   Concept::RotationEnabled,
+        Concept::PositionEnabled, Concept::LocalSmoothing,     Concept::RemoteSmoothing, Concept::PositionLimitX,
+        Concept::PositionLimitY,  Concept::PositionLimitYDown, Concept::PositionLimitZ,  Concept::PositionLimitZBack,
+        Concept::ToggleKey,       Concept::CycleTrackingModeKey, Concept::YawModeKey,
+    };
+    return all;
+}
+
+// The rows the player never changed: every value the row comes from is the shipped default,
+// floats compared bit for bit, so a NaN counts as changed. LimitY is both vertical bounds, and
+// the mode pair is both rows or neither.
+std::set<Concept> UntouchedRows(const legacy::Config& c) {
+    const legacy::Config d;
+    std::set<Concept> changed;
+    const auto row = [&changed](bool same, Concept id) {
+        if (!same) changed.insert(id);
+    };
+    row(c.udpPort == d.udpPort, Concept::UdpPort);
+    row(c.autoEnable == d.autoEnable, Concept::EnableOnStartup);
+    row(c.worldSpaceYaw == d.worldSpaceYaw, Concept::WorldSpaceYaw);
+    row(c.positionEnabled == d.positionEnabled, Concept::RotationEnabled);
+    row(c.positionEnabled == d.positionEnabled, Concept::PositionEnabled);
+    row(Bits(c.localSmoothing) == Bits(d.localSmoothing), Concept::LocalSmoothing);
+    row(Bits(c.remoteSmoothing) == Bits(d.remoteSmoothing), Concept::RemoteSmoothing);
+    row(Bits(c.positionLimitX) == Bits(d.positionLimitX), Concept::PositionLimitX);
+    row(Bits(c.positionLimitY) == Bits(d.positionLimitY), Concept::PositionLimitY);
+    row(Bits(c.positionLimitY) == Bits(d.positionLimitY), Concept::PositionLimitYDown);
+    row(Bits(c.positionLimitZ) == Bits(d.positionLimitZ), Concept::PositionLimitZ);
+    row(Bits(c.positionLimitZBack) == Bits(d.positionLimitZBack), Concept::PositionLimitZBack);
+    row(c.toggleKey == d.toggleKey, Concept::ToggleKey);
+    row(c.positionToggleKey == d.positionToggleKey, Concept::CycleTrackingModeKey);
+    row(c.yawModeKey == d.yawModeKey, Concept::YawModeKey);
+    std::set<Concept> untouched;
+    for (const Concept id : AllRows()) {
+        if (!changed.count(id)) untouched.insert(id);
+    }
+    return untouched;
+}
+
+std::string Names(const std::set<Concept>& rows) {
+    std::string text;
+    for (const Concept id : rows) {
+        text += (text.empty() ? "" : ", ") + std::string(cfg::schema::kConcepts[static_cast<size_t>(id)].name);
+    }
+    return text.empty() ? "none" : text;
+}
+
+// The import's list of rows left to Defaults.ini, held to the rows the player never changed.
+std::set<Concept> CheckFollows(const std::string& name, const legacy::Config& c, const cfg::ImportResult& result) {
+    const std::set<Concept> follows(result.follows_defaults_ini.begin(), result.follows_defaults_ini.end());
+    if (follows.size() != result.follows_defaults_ini.size()) Fail(name, "follows_defaults_ini names a row twice");
+    const std::set<Concept> untouched = UntouchedRows(c);
+    if (follows != untouched) {
+        Fail(name, "the import leaves " + Names(follows) + " to Defaults.ini, the player never changed " +
+                       Names(untouched));
+    }
+    return follows;
+}
+
+// What the session starts on over a Defaults.ini other than the built-in one: the import's
+// start, with each row the import left to Defaults.ini as that file's own start gives it.
+Start OverDefaults(Start want, const std::set<Concept>& follows, const Start& defaultsIni) {
+    const auto take = [&follows](Concept id) { return follows.count(id) != 0; };
+    if (take(Concept::UdpPort)) want.port = defaultsIni.port;
+    if (take(Concept::EnableOnStartup)) want.enabled = defaultsIni.enabled;
+    if (take(Concept::WorldSpaceYaw)) want.world_yaw = defaultsIni.world_yaw;
+    if (take(Concept::RotationEnabled)) want.mode = defaultsIni.mode;
+    if (take(Concept::LocalSmoothing)) want.local_smoothing = defaultsIni.local_smoothing;
+    if (take(Concept::RemoteSmoothing)) want.remote_smoothing = defaultsIni.remote_smoothing;
+    if (take(Concept::PositionLimitX)) want.limit_x = defaultsIni.limit_x;
+    if (take(Concept::PositionLimitY)) want.limit_y = defaultsIni.limit_y;
+    if (take(Concept::PositionLimitYDown)) want.limit_y_down = defaultsIni.limit_y_down;
+    if (take(Concept::PositionLimitZ)) want.limit_z = defaultsIni.limit_z;
+    if (take(Concept::PositionLimitZBack)) want.limit_z_back = defaultsIni.limit_z_back;
+    const std::pair<Action, Concept> hotkeys[] = {
+        {Action::Toggle, Concept::ToggleKey},
+        {Action::CycleMode, Concept::CycleTrackingModeKey},
+        {Action::YawMode, Concept::YawModeKey},
+    };
+    for (const auto& [action, id] : hotkeys) {
+        if (!take(id)) continue;
+        const Action a = action;
+        want.hotkeys.erase(std::remove_if(want.hotkeys.begin(), want.hotkeys.end(),
+                                          [a](const Registration& r) { return r.action == a; }),
+                           want.hotkeys.end());
+        for (const Registration& r : defaultsIni.hotkeys) {
+            if (r.action == a) want.hotkeys.push_back(r);
+        }
+    }
+    std::sort(want.hotkeys.begin(), want.hotkeys.end());
+    return want;
+}
+
 struct MigrationTally {
     std::string committed;
     std::wstring builtin_defaults;
     std::wstring altered_defaults;
+    // What a session starts on with no legacy file over the changed Defaults.ini.
+    Start altered_start;
     std::set<std::string> migrated;
     int created = 0;
     int converted = 0;
@@ -707,7 +822,10 @@ struct MigrationTally {
     int with_pose_shaping_dropped = 0;
     int with_n1 = 0;
     int with_n2 = 0;
+    int with_n3 = 0;
     int with_reticle = 0;
+    int touched = 0;
+    int mode_touched = 0;
 };
 
 cfg::ConfigOwnerOptions<Config> Options(const std::wstring& dir, const std::wstring& defaults) {
@@ -848,7 +966,10 @@ void MigrateInput(const Folders& f, const std::string& name, const std::optional
         return;
     }
 
+    const std::set<Concept> follows = CheckFollows(label, i.cfg, *result);
     if (builtin) {
+        if (follows != AllRows()) ++tally.touched;
+        if (!follows.count(Concept::RotationEnabled)) ++tally.mode_touched;
         if (CheckPoseShaping(label, i.cfg, *result) > 0) ++tally.with_pose_shaping_dropped;
         CheckDropRules(label, i.cfg, *result);
         const auto has = [result](cfg::DropRule rule) {
@@ -857,10 +978,13 @@ void MigrateInput(const Folders& f, const std::string& name, const std::optional
         };
         if (has(cfg::DropRule::KeyCodeOutOfRange)) ++tally.with_n1;
         if (has(cfg::DropRule::NonFiniteNumber)) ++tally.with_n2;
+        if (has(cfg::DropRule::ModifierKey)) ++tally.with_n3;
         if (has(cfg::DropRule::Reticle)) ++tally.with_reticle;
     }
 
-    for (const std::string& d : StartDifferences(FromImport(label, i.cfg, result->dropped), FromMigration(m.loaded.config))) {
+    const Start imported = FromImport(label, i.cfg, result->dropped);
+    const Start want = builtin ? imported : OverDefaults(imported, follows, tally.altered_start);
+    for (const std::string& d : StartDifferences(want, FromMigration(m.loaded.config))) {
         Fail(label, "comparison 2: " + d);
     }
 
@@ -873,6 +997,12 @@ void MigrateInput(const Folders& f, const std::string& name, const std::optional
     tally.migrated.insert(*m.bytes);
     if (m.bytes->find("=default\r\n") != std::string::npos) ++tally.with_default_rows;
     if (*m.bytes != tally.committed) ++tally.with_values;
+    for (const Concept id : follows) {
+        const std::string key = cfg::schema::kConcepts[static_cast<size_t>(id)].key;
+        if (m.bytes->find("\r\n" + key + "=default\r\n") == std::string::npos) {
+            Fail(label, key + " follows Defaults.ini and is not written default");
+        }
+    }
 
     if (builtin) {
         const Migration ro = Migrate(label, f.read_only, bytes, true, defaults);
@@ -1111,6 +1241,47 @@ int main(int argc, char** argv) {
             RemoveFolders(f);
         }
         WriteAlteredDefaults(tally);
+        Start builtinStart;
+        for (const auto& [defaults, start] : {std::pair{&tally.builtin_defaults, &builtinStart},
+                                              std::pair{&tally.altered_defaults, &tally.altered_start}}) {
+            const Folders f = NextFolders(root);
+            cfg::ConfigOwner<Config> owner(Options(f.migration, *defaults));
+            const cfg::ConfigLoadResult<Config> created = owner.Load();
+            if (created.status != cfg::ConfigLoadStatus::Created) Fail("first load", "a load with no file is not Created");
+            *start = FromMigration(created.config);
+            RemoveFolders(f);
+        }
+        {
+            // The changed Defaults.ini starts differently on every row, so a row left to the wrong
+            // file shows.
+            const Start& b = builtinStart;
+            const Start& a = tally.altered_start;
+            std::vector<std::string> same;
+            const auto differs = [&same](bool d, const std::string& what) {
+                if (!d) same.push_back(what);
+            };
+            differs(a.port != b.port, "port");
+            differs(a.enabled != b.enabled, "enabled");
+            differs(a.world_yaw != b.world_yaw, "world_yaw");
+            differs(a.mode != b.mode, "mode");
+            differs(a.local_smoothing != b.local_smoothing, "local_smoothing");
+            differs(a.remote_smoothing != b.remote_smoothing, "remote_smoothing");
+            differs(a.limit_x != b.limit_x, "limit_x");
+            differs(a.limit_y != b.limit_y, "limit_y");
+            differs(a.limit_y_down != b.limit_y_down, "limit_y_down");
+            differs(a.limit_z != b.limit_z, "limit_z");
+            differs(a.limit_z_back != b.limit_z_back, "limit_z_back");
+            for (const Action action : {Action::Toggle, Action::CycleMode, Action::YawMode}) {
+                const auto of = [action](const Start& s) {
+                    std::vector<Registration> r;
+                    std::copy_if(s.hotkeys.begin(), s.hotkeys.end(), std::back_inserter(r),
+                                 [action](const Registration& x) { return x.action == action; });
+                    return r;
+                };
+                differs(of(a) != of(b), ActionName(action));
+            }
+            for (const std::string& field : same) Fail("changed Defaults.ini", field + " starts as the built-in one does");
+        }
 
         TestFrozenDefaults();
         TestRegistrationModel();
@@ -1144,6 +1315,15 @@ int main(int argc, char** argv) {
             if (m.bytes != tally.committed) {
                 Fail("fresh equals upgrade", name + " does not convert to the committed file");
             }
+            const std::wstring path = f.migration + L"\\" + kIniName;
+            legacy::Config read;
+            legacy::Read(Narrow(path).c_str(), read);
+            Config mapped = SkyrimHT::MakeConfigTable().defaults();
+            const cfg::ImportResult result =
+                SkyrimHT::MakeLegacyImport().run(cfg::LegacyInput{path, Narrow(path), false}, mapped);
+            if (CheckFollows(name, read, result) != AllRows()) {
+                Fail("fresh equals upgrade", name + " does not leave every row to Defaults.ini");
+            }
             RemoveFolders(f);
         }
 
@@ -1174,10 +1354,17 @@ int main(int argc, char** argv) {
         std::printf("  %d with [Crosshair] Show=false dropped (reticle)\n", tally.with_reticle);
         std::printf("  %d with a hotkey code outside 0x01-0xFE unbound (N1)\n", tally.with_n1);
         std::printf("  %d with a float that is not finite at the row's default (N2)\n", tally.with_n2);
+        std::printf("  %d with a hotkey on a Ctrl, Shift or Alt key alone unbound (N3)\n", tally.with_n3);
+        std::printf("  %d with a row changed from the shipped default, %d of them the tracking mode\n", tally.touched,
+                    tally.mode_touched);
+        if (tally.touched == 0 || tally.mode_touched == 0) {
+            Fail("follows Defaults.ini", "no input changes a row, the tracking mode among them");
+        }
         if (tally.with_pose_shaping_dropped == 0) Fail("pose shaping", "no input drops a changed value");
         if (tally.with_reticle == 0) Fail("reticle", "no input drops [Crosshair] Show=false");
         if (tally.with_n1 == 0) Fail("N1", "no input unbinds an out-of-range code");
         if (tally.with_n2 == 0) Fail("N2", "no input imports a float that is not finite as the default");
+        if (tally.with_n3 == 0) Fail("N3", "no input unbinds a Ctrl, Shift or Alt key");
         if (tally.with_default_rows == 0) Fail("default rows", "no import writes default");
         if (tally.with_values == 0) Fail("values", "no import writes a value");
         if (tally.migrated.count(tally.committed) == 0) Fail("first run", "no input migrated to the committed file");
