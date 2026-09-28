@@ -1,11 +1,5 @@
 # Changelog
 
-## [0.3.0] - 2026-08-20
-
-### Added
-
-- split smoothing into local/remote and drop mod-side recentring
-
 ## [Unreleased]
 
 ### Changed
@@ -27,19 +21,6 @@
 - Leaning down is bounded by `LimitY`, as leaning up is (6d25db0). 0.3.0 held the downward lean at 0.20 m whatever `LimitY` said, so with `LimitY` changed from 0.20 the downward travel changes to match.
 - A forward or back lean limit you set in an older version now applies to the same lean it did there. With `InvertZ=true`, which every earlier version shipped and wrote, `LimitZBack` limited the forward lean and `LimitZ` the backward one, so `PositionLimitZ` (forward) is imported from `LimitZBack` and `PositionLimitZBack` (backward) from `LimitZ`. With `InvertZ=false`, or no `InvertZ` line, `LimitZ` is imported into `PositionLimitZ` and `LimitZBack` into `PositionLimitZBack`. A limit you never changed is written as `default`.
 - With no `HeadTracking.ini`, or one with no `InvertZ` line, depth now runs the fixed way described under Fixed (b285051). 0.3.0 took `InvertZ=true` there.
-- Recentring is gone entirely: the `Home` / `Ctrl+Shift+T` hotkey, the
-  `RecenterKey` ini entry, the "View Recentered" notification, and the mod's own
-  centre. Your tracker owns the centre now. Set it there, with OpenTrack's Center
-  bind, the CENTER button in a phone app, or your headset's own centring, and the
-  mod applies what the tracker sends. Two centres in series was the problem: when
-  the view was off you could not tell which side was wrong, and switching trackers
-  meant centring in both.
-- the log records the first RAW tracker sample the receiver accepts, ahead of the enable and gameplay gates, so a "no head tracking" report can be told apart from a tracker that never reached the receiver. Previously the log ended at "Initialization complete" either way.
-- `HeadTracking.log` keeps one previous generation as `HeadTracking.prev.log`. It was already rewritten per launch, so a crash report was destroyed by the relaunch that came before the user sent it.
-
-- smoothing is now two user-configurable keys in `[Sensitivity]`: `LocalSmoothing` (default 0.0, tracker running on this PC) and `RemoteSmoothing` (default 0.15, tracker on a remote network device). The value is picked per connection from the packet source address and covers both rotation and position.
-- removed `[Sensitivity] RotationSmoothing` and `[Position] Smoothing`.
-- removed the hidden 0.15 baseline smoothing floor, so a local tracker now gets zero-latency, unsmoothed tracking by default.
 
 ### Removed
 
@@ -66,7 +47,26 @@
   leaning in, 0.10m pulling back to stop the camera clipping through the player.
   Arrow launch origins follow the same offset, so they move with it.
 
-## [0.1.0] - 2026-05-18
+## [0.3.0] - 2026-08-20
+
+### Added
+
+- split smoothing into local/remote and drop mod-side recentring
+
+### Changed
+
+- Recentring is gone entirely: the `Home` / `Ctrl+Shift+T` hotkey, the
+  `RecenterKey` ini entry, the "View Recentered" notification, and the mod's own
+  centre. Your tracker owns the centre now. Set it there, with OpenTrack's Center
+  bind, the CENTER button in a phone app, or your headset's own centring, and the
+  mod applies what the tracker sends. Two centres in series was the problem: when
+  the view was off you could not tell which side was wrong, and switching trackers
+  meant centring in both.
+- the log records the first RAW tracker sample the receiver accepts, ahead of the enable and gameplay gates, so a "no head tracking" report can be told apart from a tracker that never reached the receiver. Previously the log ended at "Initialization complete" either way.
+- `HeadTracking.log` keeps one previous generation as `HeadTracking.prev.log`. It was already rewritten per launch, so a crash report was destroyed by the relaunch that came before the user sent it.
+- smoothing is now two user-configurable keys in `[Sensitivity]`: `LocalSmoothing` (default 0.0, tracker running on this PC) and `RemoteSmoothing` (default 0.15, tracker on a remote network device). The value is picked per connection from the packet source address and covers both rotation and position.
+- removed `[Sensitivity] RotationSmoothing` and `[Position] Smoothing`.
+- removed the hidden 0.15 baseline smoothing floor, so a local tracker now gets zero-latency, unsmoothed tracking by default.
 
 ## [0.2.0] - 2026-08-03
 
@@ -125,3 +125,5 @@
 ### Other
 
 - Hello world
+
+## [0.1.0] - 2026-05-18
