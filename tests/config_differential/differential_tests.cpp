@@ -30,10 +30,19 @@
 // every value is the shipped default, and holds the import's list to it on every input. Every
 // file a release shipped or wrote and each version committed since list every row.
 //
+// The Z limits go by the lean they bounded, not by their keys. Every published build applied
+// InvertZ before the processor's [-LimitZ, +LimitZBack] clamp, so with InvertZ true LimitZBack
+// bounded the forward lean and LimitZ the backward one. This build inverts nothing. The test
+// finds which key bounded each lean by running a lean past two probe limits through the
+// processor (LegacyLeanKeys) and expects each limit on the row of its lean, compared for
+// Defaults.ini with what its key shipped at. Files with edited Z limits, InvertZ true and false,
+// also carry the limits the migration must give, written out by hand.
+//
 // Comparison 2 runs over two Defaults.ini files, one at the built-in values and one a player
-// changed on every row. Over the built-in one the session starts as the import read, since the
-// shipped defaults are the built-in values. Over the changed one a row the player never changed
-// is written default and takes that file's value, and a changed row keeps the player's. After
+// changed on every row. Over each a row the player never changed is written default and takes
+// that file's value, and a changed row keeps the player's. Over the built-in one that is the
+// value the import read on every row but the Z limits of a file with InvertZ true, whose
+// untouched limits by lean are 0.10 forward and 0.40 backward and take 0.40 and 0.10. After
 // every load HeadTracking.ini keeps its bytes, its write time and its
 // attribute, Defaults.ini is never written, and the folder holds the legacy file and
 // CameraUnlock.ini and nothing else. The next load reads CameraUnlock.ini, imports nothing and
@@ -48,8 +57,8 @@
 // --first-run), the file v0.1.0, v0.1.1 and v0.2.0 write at first launch (one writer, extracted
 // once from v0.1.0's sources, as frozen.tsv records), core's corpus over the v0.3.0 file, the
 // v0.3.0 file with all three hotkeys on each code from 0x01 to 0xFE, the v0.3.0 file with a
-// number that is not finite on each float it reads, and a legacy file another program holds open
-// with no sharing.
+// number that is not finite on each float it reads, the Z limit cases above, and a legacy file
+// another program holds open with no sharing.
 
 #include "core/config.h"
 #include "legacy_config/legacy_config.h"
@@ -61,6 +70,7 @@
 #include "cameraunlock/config/testing/ini_mutations.h"
 #include "cameraunlock/input/key_binding_registration.h"
 #include "cameraunlock/input/key_bindings.h"
+#include "cameraunlock/processing/position_processor.h"
 #include "cameraunlock/tracking/tracking_mode.h"
 
 #include <windows.h>
@@ -504,6 +514,55 @@ std::vector<MutationKey> CorpusKeys() {
 }
 
 // ---------------------------------------------------------------------------
+// Which legacy key bounded each lean
+// ---------------------------------------------------------------------------
+//
+// The processor applies InvertZ before its [-LimitZ, +LimitZBack] clamp, at this build's core
+// pin as at v0.1.0's (c080eda) and v0.3.0's (3465659). A lean of ten metres either way, far past
+// two limits set apart, shows which key bounded it. Negative z is the forward lean.
+
+enum class ZKey { LimitZ, LimitZBack };
+
+struct LeanKeys {
+    ZKey forward;
+    ZKey backward;
+};
+
+LeanKeys FindLeanKeys(bool invertZ) {
+    constexpr float kProbeZ = 1.0f;
+    constexpr float kProbeZBack = 2.0f;
+    cameraunlock::PositionSettings settings;
+    settings.invert_z = invertZ;
+    settings.limit_z = kProbeZ;
+    settings.limit_z_back = kProbeZBack;
+    const auto key = [&settings](float rawZ) {
+        cameraunlock::PositionProcessor processor;
+        processor.SetSettings(settings);
+        const float bound = std::fabs(
+            processor.Process(cameraunlock::PositionData(0.0f, 0.0f, rawZ), cameraunlock::math::Quat4::Identity(), 1.0f).z);
+        if (bound != kProbeZ && bound != kProbeZBack) throw std::logic_error("a probe lean stops at neither limit");
+        return bound == kProbeZ ? ZKey::LimitZ : ZKey::LimitZBack;
+    };
+    const LeanKeys keys{key(-10.0f), key(10.0f)};
+    if (keys.forward == keys.backward) throw std::logic_error("one Z limit bounds both leans");
+    return keys;
+}
+
+const LeanKeys& LegacyLeanKeys(bool invertZ) {
+    static const LeanKeys plain = FindLeanKeys(false);
+    static const LeanKeys inverted = FindLeanKeys(true);
+    return invertZ ? inverted : plain;
+}
+
+float LimitOf(const legacy::Config& c, ZKey k) {
+    return k == ZKey::LimitZ ? c.positionLimitZ : c.positionLimitZBack;
+}
+
+const char* KeyName(ZKey k) {
+    return k == ZKey::LimitZ ? "LimitZ" : "LimitZBack";
+}
+
+// ---------------------------------------------------------------------------
 // Comparison 2: the frozen reader against the migration
 // ---------------------------------------------------------------------------
 
@@ -561,9 +620,9 @@ uint32_t FiniteOrDefault(const std::string& name, float value, float rowDefault,
     return Bits(finite ? value : rowDefault);
 }
 
-// Mod::Initialize and RegisterBindings as commit A ran them, with the approved changes applied:
-// a NaN the reader let through is the row's default (N2), and a code N1 or N3 unbinds is not
-// registered.
+// Mod::Initialize and RegisterBindings as commit A ran them, with each Z limit on the row of the
+// lean it bounded and the approved changes applied: a NaN the reader let through is the row's
+// default (N2), and a code N1 or N3 unbinds is not registered.
 Start FromImport(const std::string& name, const legacy::Config& c, const std::vector<cfg::DroppedValue>& dropped) {
     const Config defaults = SkyrimHT::MakeConfigTable().defaults();
     Start s;
@@ -579,9 +638,11 @@ Start FromImport(const std::string& name, const legacy::Config& c, const std::ve
     s.limit_x = FiniteOrDefault(name, c.positionLimitX, defaults.position.limit_x, "Position", "LimitX", dropped);
     s.limit_y = FiniteOrDefault(name, c.positionLimitY, defaults.position.limit_y, "Position", "LimitY", dropped);
     s.limit_y_down = Bits(std::isfinite(c.positionLimitY) ? c.positionLimitY : defaults.position.limit_y_down);
-    s.limit_z = FiniteOrDefault(name, c.positionLimitZ, defaults.position.limit_z, "Position", "LimitZ", dropped);
-    s.limit_z_back =
-        FiniteOrDefault(name, c.positionLimitZBack, defaults.position.limit_z_back, "Position", "LimitZBack", dropped);
+    const LeanKeys& keys = LegacyLeanKeys(c.positionInvertZ);
+    s.limit_z = FiniteOrDefault(name, LimitOf(c, keys.forward), defaults.position.limit_z, "Position",
+                                KeyName(keys.forward), dropped);
+    s.limit_z_back = FiniteOrDefault(name, LimitOf(c, keys.backward), defaults.position.limit_z_back, "Position",
+                                     KeyName(keys.backward), dropped);
     const bool toggleKept = KeyKept(name, c.toggleKey, "ToggleKey", dropped);
     const bool cycleKept = KeyKept(name, c.positionToggleKey, "PositionToggleKey", dropped);
     const bool yawKept = KeyKept(name, c.yawModeKey, "YawModeKey", dropped);
@@ -724,8 +785,8 @@ const std::set<Concept>& AllRows() {
 }
 
 // The rows the player never changed: every value the row comes from is the shipped default,
-// floats compared bit for bit, so a NaN counts as changed. LimitY is both vertical bounds, and
-// the mode pair is both rows or neither.
+// floats compared bit for bit, so a NaN counts as changed. LimitY is both vertical bounds, each
+// Z row is the limit of its lean, and the mode pair is both rows or neither.
 std::set<Concept> UntouchedRows(const legacy::Config& c) {
     const legacy::Config d;
     std::set<Concept> changed;
@@ -742,8 +803,9 @@ std::set<Concept> UntouchedRows(const legacy::Config& c) {
     row(Bits(c.positionLimitX) == Bits(d.positionLimitX), Concept::PositionLimitX);
     row(Bits(c.positionLimitY) == Bits(d.positionLimitY), Concept::PositionLimitY);
     row(Bits(c.positionLimitY) == Bits(d.positionLimitY), Concept::PositionLimitYDown);
-    row(Bits(c.positionLimitZ) == Bits(d.positionLimitZ), Concept::PositionLimitZ);
-    row(Bits(c.positionLimitZBack) == Bits(d.positionLimitZBack), Concept::PositionLimitZBack);
+    const LeanKeys& keys = LegacyLeanKeys(c.positionInvertZ);
+    row(Bits(LimitOf(c, keys.forward)) == Bits(LimitOf(d, keys.forward)), Concept::PositionLimitZ);
+    row(Bits(LimitOf(c, keys.backward)) == Bits(LimitOf(d, keys.backward)), Concept::PositionLimitZBack);
     row(c.toggleKey == d.toggleKey, Concept::ToggleKey);
     row(c.positionToggleKey == d.positionToggleKey, Concept::CycleTrackingModeKey);
     row(c.yawModeKey == d.yawModeKey, Concept::YawModeKey);
@@ -812,7 +874,8 @@ struct MigrationTally {
     std::string committed;
     std::wstring builtin_defaults;
     std::wstring altered_defaults;
-    // What a session starts on with no legacy file over the changed Defaults.ini.
+    // What a session starts on with no legacy file over each Defaults.ini.
+    Start builtin_start;
     Start altered_start;
     std::set<std::string> migrated;
     int created = 0;
@@ -942,16 +1005,31 @@ void CheckSecondLoad(const std::string& name, const std::wstring& dir, const Mig
     }
 }
 
+// PositionLimitZ and PositionLimitZBack, forward then backward, that a migration over the
+// built-in Defaults.ini must give.
+struct Lean {
+    float forward;
+    float backward;
+};
+
 // Comparison 2 over one Defaults.ini. The session must start as the import does in every case
 // but a fresh install over a changed Defaults.ini, which follows that file.
 void MigrateInput(const Folders& f, const std::string& name, const std::optional<std::string>& bytes,
                   const ImportRun& i, const cfg::ImportResult* result, const std::wstring& defaults,
-                  MigrationTally& tally) {
+                  const std::optional<Lean>& lean, MigrationTally& tally) {
     using cfg::ConfigLoadStatus;
     const bool builtin = defaults == tally.builtin_defaults;
     const std::string label = name + (builtin ? "" : ", Defaults.ini changed");
     const Migration m = Migrate(label, f.migration, bytes, false, defaults);
     CheckNoShaping(label, m.loaded.config);
+    if (builtin && lean) {
+        const cameraunlock::PositionSettings& p = m.loaded.config.position;
+        if (Bits(p.limit_z) != Bits(lean->forward) || Bits(p.limit_z_back) != Bits(lean->backward)) {
+            Fail(label, "gives PositionLimitZ " + std::to_string(p.limit_z) + " and PositionLimitZBack " +
+                            std::to_string(p.limit_z_back) + ", not " + std::to_string(lean->forward) + " and " +
+                            std::to_string(lean->backward) + ", the limits of the forward and the backward lean");
+        }
+    }
 
     if (!bytes) {
         if (m.loaded.status != ConfigLoadStatus::Created) Fail(label, "no file is not Created");
@@ -983,7 +1061,7 @@ void MigrateInput(const Folders& f, const std::string& name, const std::optional
     }
 
     const Start imported = FromImport(label, i.cfg, result->dropped);
-    const Start want = builtin ? imported : OverDefaults(imported, follows, tally.altered_start);
+    const Start want = OverDefaults(imported, follows, builtin ? tally.builtin_start : tally.altered_start);
     for (const std::string& d : StartDifferences(want, FromMigration(m.loaded.config))) {
         Fail(label, "comparison 2: " + d);
     }
@@ -1015,7 +1093,7 @@ void MigrateInput(const Folders& f, const std::string& name, const std::optional
 }
 
 void RunInput(const std::wstring& root, const std::string& name, const std::optional<std::string>& bytes,
-              MigrationTally& tally) {
+              MigrationTally& tally, const std::optional<Lean>& lean = std::nullopt) {
     const Folders f = NextFolders(root);
     OracleRun o;
     {
@@ -1045,7 +1123,7 @@ void RunInput(const std::wstring& root, const std::string& name, const std::opti
 
     CompareOracleWithImport(name, o, i);
     for (const std::wstring& defaults : {tally.builtin_defaults, tally.altered_defaults}) {
-        MigrateInput(f, name, bytes, i, result ? &*result : nullptr, defaults, tally);
+        MigrateInput(f, name, bytes, i, result ? &*result : nullptr, defaults, lean, tally);
     }
     RemoveFolders(f);
 }
@@ -1241,8 +1319,7 @@ int main(int argc, char** argv) {
             RemoveFolders(f);
         }
         WriteAlteredDefaults(tally);
-        Start builtinStart;
-        for (const auto& [defaults, start] : {std::pair{&tally.builtin_defaults, &builtinStart},
+        for (const auto& [defaults, start] : {std::pair{&tally.builtin_defaults, &tally.builtin_start},
                                               std::pair{&tally.altered_defaults, &tally.altered_start}}) {
             const Folders f = NextFolders(root);
             cfg::ConfigOwner<Config> owner(Options(f.migration, *defaults));
@@ -1254,7 +1331,7 @@ int main(int argc, char** argv) {
         {
             // The changed Defaults.ini starts differently on every row, so a row left to the wrong
             // file shows.
-            const Start& b = builtinStart;
+            const Start& b = tally.builtin_start;
             const Start& a = tally.altered_start;
             std::vector<std::string> same;
             const auto differs = [&same](bool d, const std::string& what) {
@@ -1302,8 +1379,28 @@ int main(int argc, char** argv) {
             {"first run, v0.1.0 to v0.2.0", ReadInput("first-run-v0.1.0.ini")},
             {"first run, v0.3.0", firstRun},
         };
-        for (const auto& [name, bytes] : inputs) RunInput(root, name, bytes, tally);
+        const Lean shippedLean{0.40f, 0.10f};
+        for (const auto& [name, bytes] : inputs) RunInput(root, name, bytes, tally, shippedLean);
         TestUnopenableFile(root, shipped, tally);
+
+        // Every release shipped and wrote InvertZ=true, LimitZ=0.40 and LimitZBack=0.10: the
+        // forward lean stopped at LimitZBack and the backward one at LimitZ. With InvertZ=false
+        // each key bounded the lean it names.
+        const std::string notInverted = WithValue(shipped, "InvertZ", "false");
+        const std::vector<std::tuple<std::string, std::string, Lean>> leanInputs = {
+            {"InvertZ=true, LimitZBack=0.25", WithValue(shipped, "LimitZBack", "0.25"), Lean{0.25f, 0.10f}},
+            {"InvertZ=true, LimitZ=0.05", WithValue(shipped, "LimitZ", "0.05"), Lean{0.40f, 0.05f}},
+            {"InvertZ=true, LimitZ=0.20 and LimitZBack=0.60",
+             WithValue(WithValue(shipped, "LimitZ", "0.20"), "LimitZBack", "0.60"), Lean{0.60f, 0.20f}},
+            {"InvertZ=true, LimitZ=0.10 and LimitZBack=0.40",
+             WithValue(WithValue(shipped, "LimitZ", "0.10"), "LimitZBack", "0.40"), Lean{0.40f, 0.10f}},
+            {"InvertZ=false", notInverted, shippedLean},
+            {"InvertZ=false, LimitZ=0.60", WithValue(notInverted, "LimitZ", "0.60"), Lean{0.60f, 0.10f}},
+            {"InvertZ=false, LimitZBack=0.05", WithValue(notInverted, "LimitZBack", "0.05"), Lean{0.40f, 0.05f}},
+            {"InvertZ=false, LimitZ=0.10 and LimitZBack=0.40",
+             WithValue(WithValue(notInverted, "LimitZ", "0.10"), "LimitZBack", "0.40"), Lean{0.10f, 0.40f}},
+        };
+        for (const auto& [name, bytes, lean] : leanInputs) RunInput(root, name, bytes, tally, lean);
 
         // Fresh equals upgrade: every file a release shipped, each version committed since and
         // the ones every release wrote at first launch convert, over Defaults.ini at the built-in
@@ -1338,7 +1435,8 @@ int main(int argc, char** argv) {
 
         std::printf("%zu inputs, %zu of them from the corpus, %zu with every hotkey on one code and %zu with a "
                     "float that is not finite\n",
-                    inputs.size() + 1 + corpus.size() + codes.size() + nonFinite.size(), corpus.size(), codes.size(),
+                    inputs.size() + leanInputs.size() + 1 + corpus.size() + codes.size() + nonFinite.size(),
+                    corpus.size(), codes.size(),
                     nonFinite.size());
         std::printf("comparison 1, the published build (v0.3.0) against the frozen reader: %zu listed differences\n",
                     std::size(kComparisonOneDifferences));

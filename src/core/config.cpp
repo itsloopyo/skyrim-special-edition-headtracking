@@ -66,8 +66,16 @@ cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
     out.position.limit_x = finite(c.positionLimitX, defaults.position.limit_x, "Position", "LimitX");
     out.position.limit_y = finite(c.positionLimitY, defaults.position.limit_y, "Position", "LimitY");
     out.position.limit_y_down = std::isfinite(c.positionLimitY) ? c.positionLimitY : defaults.position.limit_y_down;
-    out.position.limit_z = finite(c.positionLimitZ, defaults.position.limit_z, "Position", "LimitZ");
-    out.position.limit_z_back = finite(c.positionLimitZBack, defaults.position.limit_z_back, "Position", "LimitZBack");
+    // Every earlier build applied InvertZ before the processor's [-LimitZ, +LimitZBack] clamp,
+    // so with InvertZ true LimitZBack bounded the forward lean and LimitZ the backward one. This
+    // build inverts nothing, so each limit goes to the row of the lean it bounded.
+    const bool swapped = c.positionInvertZ;
+    const float forward = swapped ? c.positionLimitZBack : c.positionLimitZ;
+    const float backward = swapped ? c.positionLimitZ : c.positionLimitZBack;
+    const char* const forwardKey = swapped ? "LimitZBack" : "LimitZ";
+    const char* const backwardKey = swapped ? "LimitZ" : "LimitZBack";
+    out.position.limit_z = finite(forward, defaults.position.limit_z, "Position", forwardKey);
+    out.position.limit_z_back = finite(backward, defaults.position.limit_z_back, "Position", backwardKey);
 
     // Every sensitivity shipped at 1.0, identity. InvertX shipped true, and that inversion is
     // now the x negation in CameraLocalLeanOffset. InvertY shipped false. Every release shipped
@@ -96,7 +104,8 @@ cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
 
     // A setting the player never changed from what the builds before shipped follows Defaults.ini.
     // LimitY stood for both vertical bounds, and each hotkey code for its row, the chord beside it
-    // having been fixed.
+    // having been fixed. Each Z limit is compared with what its legacy key shipped at, the same in
+    // every release.
     const legacy::Config shipped;
     cfg::LegacyFollowsDefaultsIni follows;
     follows.Setting(C::UdpPort, c.udpPort, shipped.udpPort);
@@ -108,8 +117,8 @@ cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
     follows.Setting(C::PositionLimitX, c.positionLimitX, shipped.positionLimitX);
     follows.Setting(C::PositionLimitY, c.positionLimitY, shipped.positionLimitY);
     follows.Setting(C::PositionLimitYDown, c.positionLimitY, shipped.positionLimitY);
-    follows.Setting(C::PositionLimitZ, c.positionLimitZ, shipped.positionLimitZ);
-    follows.Setting(C::PositionLimitZBack, c.positionLimitZBack, shipped.positionLimitZBack);
+    follows.Setting(C::PositionLimitZ, forward, swapped ? shipped.positionLimitZBack : shipped.positionLimitZ);
+    follows.Setting(C::PositionLimitZBack, backward, swapped ? shipped.positionLimitZ : shipped.positionLimitZBack);
     follows.Setting(C::ToggleKey, c.toggleKey, shipped.toggleKey);
     follows.Setting(C::CycleTrackingModeKey, c.positionToggleKey, shipped.positionToggleKey);
     follows.Setting(C::YawModeKey, c.yawModeKey, shipped.yawModeKey);
