@@ -20,7 +20,8 @@
 // lean_direction_tests holds bit for bit. [Crosshair] Show=false is dropped (reticle): the
 // game's crosshair always follows the aim now. A hotkey code outside 0x01-0xFE imports as
 // unbound (N1), as does one on a Ctrl, Shift or Alt key alone (N3), and a float the reader let
-// through as NaN imports as the row's default (N2).
+// through as NaN imports as the row's default and, where the row follows Defaults.ini, is
+// written default (N2).
 // The frozen reader clamps every other number into a range the canonical rows hold, so no
 // input is deferred for a value.
 //
@@ -785,27 +786,29 @@ const std::set<Concept>& AllRows() {
 }
 
 // The rows the player never changed: every value the row comes from is the shipped default,
-// floats compared bit for bit, so a NaN counts as changed. LimitY is both vertical bounds, each
-// Z row is the limit of its lean, and the mode pair is both rows or neither.
+// floats compared bit for bit. A NaN the reader let through is no player's choice, so its row
+// counts as unchanged (N2). LimitY is both vertical bounds, each Z row is the limit of its lean,
+// and the mode pair is both rows or neither.
 std::set<Concept> UntouchedRows(const legacy::Config& c) {
     const legacy::Config d;
     std::set<Concept> changed;
     const auto row = [&changed](bool same, Concept id) {
         if (!same) changed.insert(id);
     };
+    const auto same = [](float value, float shipped) { return !std::isfinite(value) || Bits(value) == Bits(shipped); };
     row(c.udpPort == d.udpPort, Concept::UdpPort);
     row(c.autoEnable == d.autoEnable, Concept::EnableOnStartup);
     row(c.worldSpaceYaw == d.worldSpaceYaw, Concept::WorldSpaceYaw);
     row(c.positionEnabled == d.positionEnabled, Concept::RotationEnabled);
     row(c.positionEnabled == d.positionEnabled, Concept::PositionEnabled);
-    row(Bits(c.localSmoothing) == Bits(d.localSmoothing), Concept::LocalSmoothing);
-    row(Bits(c.remoteSmoothing) == Bits(d.remoteSmoothing), Concept::RemoteSmoothing);
-    row(Bits(c.positionLimitX) == Bits(d.positionLimitX), Concept::PositionLimitX);
-    row(Bits(c.positionLimitY) == Bits(d.positionLimitY), Concept::PositionLimitY);
-    row(Bits(c.positionLimitY) == Bits(d.positionLimitY), Concept::PositionLimitYDown);
+    row(same(c.localSmoothing, d.localSmoothing), Concept::LocalSmoothing);
+    row(same(c.remoteSmoothing, d.remoteSmoothing), Concept::RemoteSmoothing);
+    row(same(c.positionLimitX, d.positionLimitX), Concept::PositionLimitX);
+    row(same(c.positionLimitY, d.positionLimitY), Concept::PositionLimitY);
+    row(same(c.positionLimitY, d.positionLimitY), Concept::PositionLimitYDown);
     const LeanKeys& keys = LegacyLeanKeys(c.positionInvertZ);
-    row(Bits(LimitOf(c, keys.forward)) == Bits(LimitOf(d, keys.forward)), Concept::PositionLimitZ);
-    row(Bits(LimitOf(c, keys.backward)) == Bits(LimitOf(d, keys.backward)), Concept::PositionLimitZBack);
+    row(same(LimitOf(c, keys.forward), LimitOf(d, keys.forward)), Concept::PositionLimitZ);
+    row(same(LimitOf(c, keys.backward), LimitOf(d, keys.backward)), Concept::PositionLimitZBack);
     row(c.toggleKey == d.toggleKey, Concept::ToggleKey);
     row(c.positionToggleKey == d.positionToggleKey, Concept::CycleTrackingModeKey);
     row(c.yawModeKey == d.yawModeKey, Concept::YawModeKey);
@@ -1451,7 +1454,7 @@ int main(int argc, char** argv) {
                     tally.with_pose_shaping_dropped);
         std::printf("  %d with [Crosshair] Show=false dropped (reticle)\n", tally.with_reticle);
         std::printf("  %d with a hotkey code outside 0x01-0xFE unbound (N1)\n", tally.with_n1);
-        std::printf("  %d with a float that is not finite at the row's default (N2)\n", tally.with_n2);
+        std::printf("  %d with a float that is not finite following Defaults.ini (N2)\n", tally.with_n2);
         std::printf("  %d with a hotkey on a Ctrl, Shift or Alt key alone unbound (N3)\n", tally.with_n3);
         std::printf("  %d with a row changed from the shipped default, %d of them the tracking mode\n", tally.touched,
                     tally.mode_touched);

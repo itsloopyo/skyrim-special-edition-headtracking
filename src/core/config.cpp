@@ -105,7 +105,8 @@ cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
     // A setting the player never changed from what the builds before shipped follows Defaults.ini.
     // LimitY stood for both vertical bounds, and each hotkey code for its row, the chord beside it
     // having been fixed. Each Z limit is compared with what its legacy key shipped at, the same in
-    // every release.
+    // every release. Each float is compared as the reader read it, so a NaN leaves its row to
+    // Defaults.ini (N2).
     const legacy::Config shipped;
     cfg::LegacyFollowsDefaultsIni follows;
     follows.Setting(C::UdpPort, c.udpPort, shipped.udpPort);
