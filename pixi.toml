@@ -31,7 +31,9 @@ build-release = { cmd = "cmake --build build --config Release", depends-on = ["s
 # Native unit tests - the lean boundary, and the config differential test that holds the
 # frozen legacy reader to the published build's - in a build tree of their own (build-tests/),
 # so they never disturb build/ or bin/. Needs no game install.
-test = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1"
+test-unit = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -Suite unit"
+test-differential = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -Suite differential"
+test = { depends-on = ["test-unit", "test-differential"] }
 build-tests = "powershell -ExecutionPolicy Bypass -File scripts/run-tests.ps1 -BuildOnly"
 
 # Rewrites HeadTracking.ini, the committed config, from the config table after a change to a
@@ -56,7 +58,7 @@ clean-all = { cmd = """
 """ }
 
 # Package release ZIP
-package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release", "test"] }
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build-release", "test-unit"] }
 
 # Core's manifest validator: the launcher manifest and the Nexus ZIP of the newest package in
 # release/, which it reads, hence the dependency.
