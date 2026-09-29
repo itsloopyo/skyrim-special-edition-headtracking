@@ -19,7 +19,7 @@ footage and screenshots" below.
 | miniz | 3.0.0 (inside Ultimate ASI Loader v9.7.2) | MIT | Compiled into the vendored dinput8.dll |
 | MinHook | v1.3.4 (`c3fcafd`), modified | BSD-2-Clause | Compiled into `SkyrimSEHeadTracking.asi` |
 | inih | r55, modified | BSD-3-Clause | Compiled into `SkyrimSEHeadTracking.asi` |
-| cameraunlock-core | a03c24290fae3a9c61f67adcb7c5ba4eedf69f20 | MIT | Compiled into `SkyrimSEHeadTracking.asi` |
+| cameraunlock-core | 88a20e7789fb5ad907ae06136bc01184edbf4b21 | MIT | Compiled into `SkyrimSEHeadTracking.asi` |
 | OpenTrack | n/a | ISC | Not bundled; UDP protocol interoperability only |
 | CommonLibSSE-NG | n/a | GPL-3.0-or-later | Neither bundled nor linked; credited as an engine-layout cross-reference |
 
@@ -315,7 +315,7 @@ this mod's `LICENSE`, so its notice has to travel with the binary in its own
 right. It ships as `licenses/cameraunlock-core-LICENSE.txt` in both release
 ZIPs and is reproduced here as well.
 
-- Pinned commit: `a03c24290fae3a9c61f67adcb7c5ba4eedf69f20`
+- Pinned commit: `88a20e7789fb5ad907ae06136bc01184edbf4b21`
 
 ```
 MIT License
