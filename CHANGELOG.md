@@ -24,6 +24,7 @@
 
 ### Removed
 
+- The DirectX Present hook. The crosshair is placed from the game's own HUD update, so the mod no longer hooks the swap chain.
 - The sensitivity, scale, deadzone, response curve and axis inversion settings: `[Sensitivity] YawMultiplier`, `PitchMultiplier` and `RollMultiplier`, and `[Position] SensitivityX`, `SensitivityY`, `SensitivityZ`, `InvertX`, `InvertY` and `InvertZ`. Set these in your tracker app instead. The x inversion every earlier version shipped switched on (`InvertX=true`) is now part of how the mod converts the tracker's axes to the game's, so leaning left and right goes the same way it did.
 - Every file 0.1.0 to 0.3.0 shipped or wrote set `InvertZ=true`, which is what made depth run backwards. The other inversions are built into the mod at the values those versions shipped, but `InvertZ=true` is dropped even though it was the shipped value, so after updating depth runs the fixed way described under Fixed, whatever your old file said. If you had set `InvertZ=false` yourself, depth already ran that way and does not change. The other sensitivity and inversion settings shipped at the same defaults in every copy (installer, launcher seed and first-run file), and with those at their shipped defaults the camera moves as it did before.
 - `[Crosshair] Show`. The game's crosshair now always moves to follow your aim while head tracking is on. `Show=false` in an old file is not carried over.
@@ -46,6 +47,15 @@
   asymmetric budget stays attached to the physical direction - 0.40m of travel
   leaning in, 0.10m pulling back to stop the camera clipping through the player.
   Arrow launch origins follow the same offset, so they move with it.
+- Arrows kept the last lean after head tracking was turned off with `End`, or
+  while a menu was open or the game was in the background, and flew from where
+  the head had been. They now leave from the body whenever tracking is not
+  moving the view.
+- Turning head tracking off with `End` left the crosshair and the activate
+  prompt wherever the head had last put them. They now go back to the centre.
+- In a menu or with the game in the background, the mod kept writing the last
+  tracked head rotation back onto the camera after each player update. It now
+  leaves the camera alone whenever it is not tracking.
 
 ## [0.3.0] - 2026-08-20
 

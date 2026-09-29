@@ -48,7 +48,6 @@ set(MOD_SOURCES
     src/hooks/projectile_hook.cpp
     src/game/game_state.cpp
     src/ui/notification.cpp
-    src/ui/crosshair_overlay.cpp
 )
 
 # Create ASI (DLL)
@@ -95,9 +94,6 @@ if(WIN32)
     target_link_libraries(SkyrimSEHeadTracking PRIVATE
         ws2_32
         psapi
-        d3d11
-        dxgi
-        d3dcompiler
         shell32
         version
     )

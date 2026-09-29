@@ -7,6 +7,7 @@
 #include "core/rtti_utils.h"
 #include "hooks/gfx_value.h"
 #include <MinHook.h>
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cmath>
@@ -66,30 +67,12 @@ uintptr_t SafeReadQword(uintptr_t addr) {
     }
 }
 
-std::atomic<float> g_aimDxFromCenterPx{0.0f};
-std::atomic<float> g_aimDyFromCenterPx{0.0f};
-std::atomic<float> g_screenWidthPx{0.0f};
-std::atomic<float> g_screenHeightPx{0.0f};
-
 std::atomic<bool> g_baselineCaptured{false};
 float g_crosshairBaselineX = 0.0f;
 float g_crosshairBaselineY = 0.0f;
 float g_stageAuthoredWidth  = 0.0f;
 float g_stageAuthoredHeight = 0.0f;
-
-void RefreshAimOffsetFromCameraSnapshot(const CameraRootSnapshots& snap, bool snapValid,
-                                         float screenW, float screenH) {
-    float dxPx = 0.0f;
-    float dyPx = 0.0f;
-    if (!snapValid || snap.niCamera == 0
-        || !ProjectBodyAimToScreenPixels(snap, screenW, screenH, dxPx, dyPx)) {
-        g_aimDxFromCenterPx.store(0.0f, std::memory_order_relaxed);
-        g_aimDyFromCenterPx.store(0.0f, std::memory_order_relaxed);
-        return;
-    }
-    g_aimDxFromCenterPx.store(dxPx, std::memory_order_relaxed);
-    g_aimDyFromCenterPx.store(dyPx, std::memory_order_relaxed);
-}
+bool  g_crosshairMoved = false;
 
 void CaptureBaselineOnce(void* movieView) {
     // Relaxed-load fast path: once captured this is hit every HUD frame for the
@@ -125,35 +108,29 @@ void CaptureBaselineOnce(void* movieView) {
                             g_stageAuthoredWidth, g_stageAuthoredHeight);
 }
 
-void UpdateNativeCrosshairPerFrame(void* movieView,
-                                   const CameraRootSnapshots& snap, bool snapValid) {
-    if (!movieView) return;
-    // When tracking is toggled off, don't keep writing the crosshair every
-    // frame - leave Scaleform's vanilla state untouched so a "toggle off"
-    // means truly "behave like vanilla". The baseline capture still happens
-    // once on first HUD frame so the values are ready when re-enabled.
-    CaptureBaselineOnce(movieView);
-    if (!Mod::Instance().IsEnabled()) return;
-    if (!g_baselineCaptured.load(std::memory_order_acquire)) return;
+// Skyrim stretches the SWF from its authored stage size (Stage.width/height,
+// typically 1280x720) to fill the screen, so projecting through the authored
+// size gives the aim offset in stage units directly. Zero while tracking is not
+// applied, or when the aim has rolled behind the tracked camera.
+void AimOffsetStageUnits(const CameraRootSnapshots& snap, bool tracking, double& dx, double& dy) {
+    dx = 0.0;
+    dy = 0.0;
+    float fx = 0.0f;
+    float fy = 0.0f;
+    if (tracking && ProjectBodyAimToScreen(snap, g_stageAuthoredWidth, g_stageAuthoredHeight, fx, fy)) {
+        dx = fx;
+        dy = fy;
+    }
+}
 
-    const float screenW = g_screenWidthPx.load(std::memory_order_relaxed);
-    const float screenH = g_screenHeightPx.load(std::memory_order_relaxed);
-    if (screenW < 1.0f || screenH < 1.0f) return;  // overlay hasn't reported yet
-    RefreshAimOffsetFromCameraSnapshot(snap, snapValid, screenW, screenH);
-
-    const float dxPx = g_aimDxFromCenterPx.load(std::memory_order_relaxed);
-    const float dyPx = g_aimDyFromCenterPx.load(std::memory_order_relaxed);
-
-    // Skyrim renders the SWF stretched from its authored stage size (Stage.width/height,
-    // typically 1280x720) to fill the screen, so 1 stage unit = screen/authored pixels.
-    // Inverse for the screen-pixel -> stage-unit conversion.
-    const float stagesPerPixelX = g_stageAuthoredWidth  / screenW;
-    const float stagesPerPixelY = g_stageAuthoredHeight / screenH;
-    const float crosshairX = g_crosshairBaselineX + dxPx * stagesPerPixelX;
-    const float crosshairY = g_crosshairBaselineY + dyPx * stagesPerPixelY;
-
-    CallSetVariableNumber(movieView, "HUDMovieBaseInstance.Crosshair._x", crosshairX);
-    CallSetVariableNumber(movieView, "HUDMovieBaseInstance.Crosshair._y", crosshairY);
+// A position written to the crosshair stays until something writes another, so
+// stopping the per-frame writes leaves it wherever the last one put it. Once
+// tracking stops it is put back on the vanilla position once and then left alone.
+void UpdateNativeCrosshair(void* movieView, bool tracking, double dx, double dy) {
+    if (!tracking && !g_crosshairMoved) return;
+    CallSetVariableNumber(movieView, "HUDMovieBaseInstance.Crosshair._x", g_crosshairBaselineX + dx);
+    CallSetVariableNumber(movieView, "HUDMovieBaseInstance.Crosshair._y", g_crosshairBaselineY + dy);
+    g_crosshairMoved = tracking;
 }
 
 // Screen-anchored HUD elements that sit at a fixed offset from the (centred)
@@ -209,6 +186,23 @@ ScreenAnchoredPathState g_screenAnchoredPaths[] = {
 // write still stands", preventing us from reprojecting our own output (a spiral).
 constexpr int kMaxFloatingMarkers = 12;
 
+struct FloatingMarkerPaths {
+    char x[80];
+    char y[80];
+};
+
+const std::array<FloatingMarkerPaths, kMaxFloatingMarkers>& GetFloatingMarkerPaths() {
+    static const std::array<FloatingMarkerPaths, kMaxFloatingMarkers> paths = [] {
+        std::array<FloatingMarkerPaths, kMaxFloatingMarkers> p{};
+        for (int i = 0; i < kMaxFloatingMarkers; ++i) {
+            snprintf(p[i].x, sizeof(p[i].x), "HUDMovieBaseInstance.FloatingQuestMarkerInstance.target%d._x", i);
+            snprintf(p[i].y, sizeof(p[i].y), "HUDMovieBaseInstance.FloatingQuestMarkerInstance.target%d._y", i);
+        }
+        return p;
+    }();
+    return paths;
+}
+
 struct FloatingMarkerState {
     bool   hasBase;
     double baseX;
@@ -221,17 +215,10 @@ FloatingMarkerState g_floatingMarkers[kMaxFloatingMarkers] = {};
 bool ReprojectFloatingMarker(
     void* movieView,
     const CameraRootSnapshots& snap,
-    int index,
-    FloatingMarkerState& state,
-    float screenW,
-    float screenH) {
-    if (snap.niCamera == 0) return false;
-    if (snap.frustumRight <= 0.0f || snap.frustumTop <= 0.0f) return false;
-
-    char xPath[96];
-    char yPath[96];
-    snprintf(xPath, sizeof(xPath), "HUDMovieBaseInstance.FloatingQuestMarkerInstance.target%d._x", index);
-    snprintf(yPath, sizeof(yPath), "HUDMovieBaseInstance.FloatingQuestMarkerInstance.target%d._y", index);
+    const FloatingMarkerPaths& paths,
+    FloatingMarkerState& state) {
+    const char* xPath = paths.x;
+    const char* yPath = paths.y;
 
     double currentX = 0.0;
     double currentY = 0.0;
@@ -260,13 +247,11 @@ bool ReprojectFloatingMarker(
         return false;
     }
 
-    const double stagesPerPixelX = static_cast<double>(g_stageAuthoredWidth)  / screenW;
-    const double stagesPerPixelY = static_cast<double>(g_stageAuthoredHeight) / screenH;
+    const double halfStageW = static_cast<double>(g_stageAuthoredWidth)  * 0.5;
+    const double halfStageH = static_cast<double>(g_stageAuthoredHeight) * 0.5;
 
-    const double cleanPxX = baseX / stagesPerPixelX;
-    const double cleanPxY = baseY / stagesPerPixelY;
-    const double cleanRight = (cleanPxX / (screenW * 0.5)) * snap.frustumRight;
-    const double cleanUp    = -(cleanPxY / (screenH * 0.5)) * snap.frustumTop;
+    const double cleanRight =  (baseX / halfStageW) * snap.frustumRight;
+    const double cleanUp    = -(baseY / halfStageH) * snap.frustumTop;
 
     // Reconstruct the world direction from the marker's clean stage position,
     // then re-project through the tracked basis.
@@ -282,8 +267,8 @@ bool ReprojectFloatingMarker(
 
     const double ndcX = trackedRight / trackedFwd / snap.frustumRight;
     const double ndcY = -trackedUp   / trackedFwd / snap.frustumTop;
-    const double targetX = ndcX * screenW * 0.5 * stagesPerPixelX;
-    const double targetY = ndcY * screenH * 0.5 * stagesPerPixelY;
+    const double targetX = ndcX * halfStageW;
+    const double targetY = ndcY * halfStageH;
 
     if (!CallSetVariableNumber(movieView, xPath, targetX)) return false;
     if (!CallSetVariableNumber(movieView, yPath, targetY)) return false;
@@ -292,19 +277,14 @@ bool ReprojectFloatingMarker(
     return true;
 }
 
-void UpdateFloatingMarkerReprojection(void* movieView,
-                                      const CameraRootSnapshots& snap, bool snapValid) {
-    if (!movieView || !Mod::Instance().IsEnabled()) return;
-    if (!snapValid) return;
-    if (!g_baselineCaptured.load(std::memory_order_acquire)) return;
-    const float screenW = g_screenWidthPx.load(std::memory_order_relaxed);
-    const float screenH = g_screenHeightPx.load(std::memory_order_relaxed);
-    if (screenW < 1.0f || screenH < 1.0f) return;
-
+void UpdateFloatingMarkerReprojection(void* movieView, const CameraRootSnapshots& snap) {
+    if (snap.frustumRight <= 0.0f || snap.frustumTop <= 0.0f) return;
+    const auto& paths = GetFloatingMarkerPaths();
     for (int i = 0; i < kMaxFloatingMarkers; ++i) {
-        ReprojectFloatingMarker(movieView, snap, i, g_floatingMarkers[i], screenW, screenH);
+        ReprojectFloatingMarker(movieView, snap, paths[i], g_floatingMarkers[i]);
     }
 }
+
 std::atomic<bool> g_loggedScreenAnchoredMiss{false};
 
 bool CompensateScreenAnchoredPath(
@@ -334,27 +314,20 @@ bool CompensateScreenAnchoredPath(
     return true;
 }
 
-void UpdateScreenAnchoredCompensation(void* movieView) {
-    if (!movieView || !Mod::Instance().IsEnabled()) return;
-    if (!g_baselineCaptured.load(std::memory_order_acquire)) return;
-
-    const float screenW = g_screenWidthPx.load(std::memory_order_relaxed);
-    const float screenH = g_screenHeightPx.load(std::memory_order_relaxed);
-    if (screenW < 1.0f || screenH < 1.0f) return;
-
-    // Aim offset is refreshed once per HUD tick by UpdateNativeCrosshairPerFrame
-    // earlier in HUDMenuAdvanceHook, so just read the published values here.
-    const double stagesPerPixelX = static_cast<double>(g_stageAuthoredWidth)  / screenW;
-    const double stagesPerPixelY = static_cast<double>(g_stageAuthoredHeight) / screenH;
-    const double targetDx = static_cast<double>(g_aimDxFromCenterPx.load(std::memory_order_relaxed)) * stagesPerPixelX;
-    const double targetDy = static_cast<double>(g_aimDyFromCenterPx.load(std::memory_order_relaxed)) * stagesPerPixelY;
-
+// Once tracking stops, one pass with a zero offset takes back the last one we
+// added, then the paths are left to the game.
+void UpdateScreenAnchoredCompensation(void* movieView, bool tracking, double dx, double dy) {
     int shifted = 0;
     for (auto& path : g_screenAnchoredPaths) {
-        shifted += CompensateScreenAnchoredPath(movieView, path, targetDx, targetDy) ? 1 : 0;
+        if (!tracking) {
+            if (path.hasLastOffset) CompensateScreenAnchoredPath(movieView, path, 0.0, 0.0);
+            path.hasLastOffset = false;
+            continue;
+        }
+        shifted += CompensateScreenAnchoredPath(movieView, path, dx, dy) ? 1 : 0;
     }
 
-    if (shifted == 0 && !g_loggedScreenAnchoredMiss.exchange(true, std::memory_order_acq_rel)) {
+    if (tracking && shifted == 0 && !g_loggedScreenAnchoredMiss.exchange(true, std::memory_order_acq_rel)) {
         Logger::Instance().Info("Screen-anchored compensation found no writable paths yet");
     }
 }
@@ -366,20 +339,28 @@ void* g_hookedAddress = nullptr;
 
 uint64_t __fastcall HUDMenuAdvanceHook(void* thisMenu, uint64_t a1, uint64_t a2, uint64_t a3) {
     const uint64_t result = g_originalAdvance(thisMenu, a1, a2, a3);
-    if (thisMenu) {
-        void* movieView = reinterpret_cast<void*>(
-            SafeReadQword(reinterpret_cast<uintptr_t>(thisMenu) + kIMenu_uiMovie_Offset));
-        // Fetch the camera snapshot once and reuse across both passes. The
-        // crosshair update and the marker compensation each previously called
-        // GetCameraRootSnapshots independently, and the marker path called it
-        // a third time inside its inner per-marker reprojection. Hoisting the
-        // 368-byte seqlock copy here drops three per-HUD-frame copies to one.
-        CameraRootSnapshots snap;
-        const bool snapValid = GetCameraRootSnapshots(snap);
-        UpdateNativeCrosshairPerFrame(movieView, snap, snapValid);
-        UpdateScreenAnchoredCompensation(movieView);
-        UpdateFloatingMarkerReprojection(movieView, snap, snapValid);
-    }
+    if (!thisMenu) return result;
+    void* movieView = reinterpret_cast<void*>(
+        SafeReadQword(reinterpret_cast<uintptr_t>(thisMenu) + kIMenu_uiMovie_Offset));
+    if (!movieView) return result;
+
+    // Captured whether or not tracking is on, so the baseline is ready the
+    // moment it is switched on.
+    CaptureBaselineOnce(movieView);
+    if (!g_baselineCaptured.load(std::memory_order_acquire)) return result;
+
+    // The camera hook publishes an empty snapshot for every frame it leaves the
+    // camera clean (toggled off, menu, alt-tab), so this is false on exactly
+    // the frames the view is untracked.
+    CameraRootSnapshots snap;
+    const bool tracking = Mod::Instance().IsEnabled() && GetCameraRootSnapshots(snap) && snap.niCamera != 0;
+
+    double dx = 0.0;
+    double dy = 0.0;
+    AimOffsetStageUnits(snap, tracking, dx, dy);
+    UpdateNativeCrosshair(movieView, tracking, dx, dy);
+    UpdateScreenAnchoredCompensation(movieView, tracking, dx, dy);
+    if (tracking) UpdateFloatingMarkerReprojection(movieView, snap);
     return result;
 }
 
@@ -439,14 +420,6 @@ void RemoveHUDMenuHook() {
         g_originalAdvance = nullptr;
     }
     Logger::Instance().Info("HUDMenu hook removed");
-}
-
-void SetNativeCrosshairAimPixels(float dxFromCenterPx, float dyFromCenterPx,
-                                 float screenWidthPx, float screenHeightPx) {
-    g_aimDxFromCenterPx.store(dxFromCenterPx, std::memory_order_relaxed);
-    g_aimDyFromCenterPx.store(dyFromCenterPx, std::memory_order_relaxed);
-    g_screenWidthPx.store(screenWidthPx,   std::memory_order_relaxed);
-    g_screenHeightPx.store(screenHeightPx, std::memory_order_relaxed);
 }
 
 } // namespace SkyrimHT

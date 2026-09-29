@@ -10,7 +10,6 @@
 #include "hooks/crosshair_override.h"
 #include "hooks/projectile_hook.h"
 #include "ui/notification.h"
-#include "ui/crosshair_overlay.h"
 
 #include <cameraunlock/config/defaults_file.h>
 #include <cameraunlock/tracking/tracking_mode.h>
@@ -125,14 +124,6 @@ bool Mod::Initialize() {
                             m_cameraHookInstalled ? "OK" : "FAILED",
                             m_inputHookInstalled ? "OK" : "FAILED");
 
-    // Crosshair overlay rides the camera hook - without it, there's nothing to
-    // compensate, so we skip the overlay entirely if the camera hook didn't take.
-    if (m_cameraHookInstalled) {
-        if (!InitializeCrosshairOverlay()) {
-            Logger::Instance().Warning("Crosshair overlay failed to install - native reticle will remain at screen center");
-        }
-    }
-
     if (m_config.show_notifications) {
         std::string startupMsg = "Skyrim SE Head Tracking v";
         startupMsg += VERSION;
@@ -153,7 +144,6 @@ void Mod::Shutdown() {
     }
 
     Logger::Instance().Info("Shutting down...");
-    ShutdownCrosshairOverlay();
     RemoveProjectileHook();
     RemoveHUDMenuHook();
     m_udpReceiver.Stop();

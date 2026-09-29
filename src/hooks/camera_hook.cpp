@@ -29,6 +29,7 @@ static std::atomic<bool> g_hookEnabled{false};
 static CameraRootSnapshots g_snapshots = {};
 static std::atomic<uint32_t> g_snapshotsSeq{0};
 static uint32_t g_writeSeq = 0;  // writer-private; only the camera hook touches it
+static bool g_publishedValid = false;  // writer-private, like g_writeSeq
 
 // Current frame's 6DOF lean offset in game-unit world coords. Set by the
 // camera hook after position-tracking processing; read by the projectile
@@ -53,14 +54,25 @@ static void PublishSnapshot(const CameraRootSnapshots& s) {
     g_snapshotsSeq.store(++g_writeSeq, std::memory_order_release);  // odd: in progress
     g_snapshots = s;
     g_snapshotsSeq.store(++g_writeSeq, std::memory_order_release);  // even: complete
+    g_publishedValid = s.cameraRoot != 0;
 }
 
-bool ProjectBodyAimToScreenPixels(
+// Every frame the hook leaves the camera clean has to say so. The player hook,
+// the pick override, the HUD and the projectile hook all act on the last
+// published frame, so a tracked frame left standing through a menu, an alt-tab
+// or a toggle-off gets its stale head rotation written back onto cameraRoot
+// after every PlayerCharacter::Update and its stale lean added to every arrow.
+static void PublishNoTracking() {
+    g_leanValid.store(false, std::memory_order_release);
+    if (g_publishedValid) PublishSnapshot(CameraRootSnapshots{});
+}
+
+bool ProjectBodyAimToScreen(
     const CameraRootSnapshots& snap,
-    float screenWidthPx,
-    float screenHeightPx,
-    float& outDxPx,
-    float& outDyPx) {
+    float screenWidth,
+    float screenHeight,
+    float& outDx,
+    float& outDy) {
     // Body-aim direction = column 0 of the CLEAN niCamera world rotation; the
     // tracked basis columns are 0=forward, 1=up, 2=right in world space, so
     // dotting expresses the aim in the tracked camera's local frame.
@@ -86,8 +98,8 @@ bool ProjectBodyAimToScreenPixels(
     const float ndcX =  aimRight / aimFwd / snap.frustumRight;
     const float ndcY = -aimUp    / aimFwd / snap.frustumTop;
 
-    outDxPx = ndcX * screenWidthPx  * 0.5f;
-    outDyPx = ndcY * screenHeightPx * 0.5f;
+    outDx = ndcX * screenWidth  * 0.5f;
+    outDy = ndcY * screenHeight * 0.5f;
     return true;
 }
 
@@ -128,10 +140,11 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
     // from the log even when tracking is disabled or the player is in a menu.
     Mod::Instance().LogFirstTrackerSample();
 
-    if (!g_hookEnabled.load(std::memory_order_relaxed)) return;
     Mod& mod = Mod::Instance();
-    if (!mod.IsEnabled()) return;
-    if (!GameState::IsInGameplay()) return;
+    if (!g_hookEnabled.load(std::memory_order_relaxed) || !mod.IsEnabled() || !GameState::IsInGameplay()) {
+        PublishNoTracking();
+        return;
+    }
 
     // Built up locally over the frame, then published atomically via the
     // seqlock at the end. A zeroed snapshot (cameraRoot == 0) is the "invalid
@@ -141,7 +154,10 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
     __try {
         uintptr_t cameraRoot = 0;
         uintptr_t niCamera = 0;
-        if (!GetSceneGraph(thisCamera, cameraRoot, niCamera)) return;
+        if (!GetSceneGraph(thisCamera, cameraRoot, niCamera)) {
+            PublishNoTracking();
+            return;
+        }
 
         // Snapshot CLEAN cameraRoot rotations before any modification. Used by
         // the PlayerCharacter::Update wrapper to restore the clean rotation
@@ -161,7 +177,7 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
         // Get head tracking rotation
         float yaw, pitch, roll;
         if (!mod.GetProcessedRotation(yaw, pitch, roll)) {
-            PublishSnapshot(CameraRootSnapshots{});  // no tracking this frame
+            PublishNoTracking();
             return;
         }
 
@@ -313,7 +329,7 @@ void __fastcall PlayerCameraUpdateHook(void* thisCamera) {
                 "Exception in camera hook (code=0x%08X, total=%llu) - skipping frame",
                 code, static_cast<unsigned long long>(n));
         }
-        PublishSnapshot(CameraRootSnapshots{});
+        PublishNoTracking();
     }
 }
 

@@ -48,18 +48,18 @@ struct CameraRootSnapshots {
 bool GetCameraRootSnapshots(CameraRootSnapshots& out);
 
 // Project the body-aim direction (column 0 of cleanNiCamWorld) through the
-// tracked NiCamera basis and frustum, returning the screen-pixel offset from
-// the screen centre at which the body-aim direction would render under head
-// tracking. Returns false (and leaves outputs unchanged) when the projection
-// is degenerate - aim has rolled behind the camera, or the frustum hasn't
-// been published yet. `snap` must have been filled from GetCameraRootSnapshots
-// (snap.niCamera != 0).
-bool ProjectBodyAimToScreenPixels(
+// tracked NiCamera basis and frustum, returning the offset from the screen
+// centre at which the body-aim direction would render under head tracking, in
+// whatever units the screen size is given in (+x right, +y down). Returns false
+// (and leaves outputs unchanged) when the projection is degenerate - aim has
+// rolled behind the camera, or the frustum hasn't been published yet. `snap`
+// must have been filled from GetCameraRootSnapshots (snap.niCamera != 0).
+bool ProjectBodyAimToScreen(
     const CameraRootSnapshots& snap,
-    float screenWidthPx,
-    float screenHeightPx,
-    float& outDxPx,
-    float& outDyPx);
+    float screenWidth,
+    float screenHeight,
+    float& outDx,
+    float& outDy);
 
 // Current 6DOF lean offset in WORLD coordinates (game units), as applied to
 // niCamera's world translate this frame. The projectile hook reads this to
