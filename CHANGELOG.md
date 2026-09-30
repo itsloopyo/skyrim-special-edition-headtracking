@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0] - 2026-09-30
+
+### Fixed
+
+- correct floating marker roll and use shared window activation
+
 ## [0.4.0] - 2026-09-30
 
 ### Changed
