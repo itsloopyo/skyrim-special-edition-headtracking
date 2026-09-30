@@ -1,26 +1,36 @@
 {
-  "schema_version": 2,
-  "mod_info": {
-    "name": "SkyrimSEHeadTracking",
-    "version": "0.3.0",
-    "game_id": "skyrim-special-edition"
-  },
-  "strategy": "AsiLoader",
-  "delivery_mode": "manifest",
+    "schema_version":  2,
+    "mod_info":  {
+                     "name":  "SkyrimSEHeadTracking",
+                     "version":  "0.4.0",
+                     "game_id":  "skyrim-special-edition"
+                 },
+    "strategy":  "AsiLoader",
+    "delivery_mode":  "manifest",
+    "files":  [
+                  {
+                      "source":  "vendor/ultimate-asi-loader/dinput8.dll",
+                      "target":  "dinput8.dll",
+                      "backup":  true
+                  },
+                  {
+                      "source":  "plugins/SkyrimSEHeadTracking.asi",
+                      "target":  "SkyrimSEHeadTracking.asi"
+                  }
+              ],
+    "runtime_requirements":  [
 
-  "files": [
-    { "source": "vendor/ultimate-asi-loader/dinput8.dll", "target": "dinput8.dll", "backup": true },
-    { "source": "plugins/SkyrimSEHeadTracking.asi", "target": "SkyrimSEHeadTracking.asi" }
-  ],
+                             ],
+    "dependencies":  [
 
-  "runtime_requirements": [],
-  "dependencies": [],
+                     ],
+    "config":  {
+                   "path":  "CameraUnlock.ini",
+                   "anchor":  "game_root",
+                   "legacy_source":  "HeadTracking.ini",
+                   "canonical_since":  "0.4.0",
+                   "per_game":  {
 
-  "config": {
-    "path": "CameraUnlock.ini",
-    "anchor": "game_root",
-    "legacy_source": "HeadTracking.ini",
-    "canonical_since": "0.4.0",
-    "per_game": {}
-  }
+                                }
+               }
 }

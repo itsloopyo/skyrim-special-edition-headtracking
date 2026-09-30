@@ -13,7 +13,7 @@ set "MOD_DISPLAY_NAME=Skyrim SE Head Tracking"
 :: the player's settings on every install.
 set "MOD_DLLS=SkyrimSEHeadTracking.asi"
 set "MOD_INTERNAL_NAME=SkyrimSEHeadTracking"
-set "MOD_VERSION=0.3.0"
+set "MOD_VERSION=0.4.0"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=ASILoader"
 set "ASI_LOADER_NAME=dinput8.dll"
