@@ -68,7 +68,7 @@ cfg::ImportResult Import(const cfg::LegacyInput& input, Config& out) {
     out.position.limit_y_down = std::isfinite(c.positionLimitY) ? c.positionLimitY : defaults.position.limit_y_down;
     // Every earlier build applied InvertZ before the processor's [-LimitZ, +LimitZBack] clamp,
     // so with InvertZ true LimitZBack bounded the forward lean and LimitZ the backward one. This
-    // build inverts nothing, so each limit goes to the row of the lean it bounded.
+    // build inverts depth after clamping, so each limit goes to the row of the lean it bounded.
     const bool swapped = c.positionInvertZ;
     const float forward = swapped ? c.positionLimitZBack : c.positionLimitZ;
     const float backward = swapped ? c.positionLimitZ : c.positionLimitZBack;

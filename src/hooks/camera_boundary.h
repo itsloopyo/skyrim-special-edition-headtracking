@@ -15,8 +15,8 @@ inline constexpr float UNITS_PER_METER = 70.0f;
 // The axis order is the one the mod has always shipped: the node's first
 // component is the one depth drives, the second up, the third lateral.
 //
-// Depth maps straight through: a forward lean (negative z throughout the
-// library) drives the node's depth component negative.
+// Depth is negated after clamping so forward (negative processor z) retains
+// LimitZ and backward retains LimitZBack.
 //
 // Lateral is negated. Every build before the canonical config did the same
 // through [Position] InvertX=true, which it shipped on; that ran ahead of the
@@ -29,7 +29,7 @@ inline constexpr float UNITS_PER_METER = 70.0f;
 // 0.40m allowance to the backward lean and the 0.10m anti-clipping allowance to
 // the forward one.
 inline NiPoint3 CameraLocalLeanOffset(float posX, float posY, float posZ) {
-    return NiPoint3(posZ * UNITS_PER_METER,
+    return NiPoint3(-posZ * UNITS_PER_METER,
                     posY * UNITS_PER_METER,
                     -posX * UNITS_PER_METER);
 }

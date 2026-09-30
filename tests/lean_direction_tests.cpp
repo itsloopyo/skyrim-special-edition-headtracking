@@ -47,10 +47,10 @@ uint32_t Bits(float f) {
 // node's first component.
 void ForwardLeanMovesCameraForward() {
     const SkyrimHT::NiPoint3 fwd = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.0f, -0.25f);
-    Check(fwd.x < 0.0f, "forward lean (processor z < 0) drives depth negative");
+    CheckNear(fwd.x, 0.25f * SkyrimHT::UNITS_PER_METER, "forward lean drives depth positive");
 
     const SkyrimHT::NiPoint3 back = SkyrimHT::CameraLocalLeanOffset(0.0f, 0.0f, 0.25f);
-    Check(back.x > 0.0f, "backward lean (processor z > 0) drives depth positive");
+    CheckNear(back.x, -0.25f * SkyrimHT::UNITS_PER_METER, "backward lean drives depth negative");
 }
 
 void UpMapsStraightThroughAndLateralIsNegated() {
@@ -75,18 +75,27 @@ cameraunlock::math::Vec3 Settle(const cameraunlock::PositionSettings& settings, 
     return processor.Process(raw, cameraunlock::math::Quat4::Identity(), 1.0f);
 }
 
-float SaturatedForwardUnits(float rawZ) {
-    const cameraunlock::math::Vec3 out = Settle(RuntimeSettings(), cameraunlock::PositionData(0.0f, 0.0f, rawZ));
+float SaturatedForwardUnits(float rawZ, const cameraunlock::PositionSettings& settings = RuntimeSettings()) {
+    const cameraunlock::math::Vec3 out = Settle(settings, cameraunlock::PositionData(0.0f, 0.0f, rawZ));
     return SkyrimHT::CameraLocalLeanOffset(out.x, out.y, out.z).x;
 }
 
 void LeanBudgetsAreNotReversed() {
     // A metre of physical lean either way: far past both limits, so the output
     // is whichever budget that direction actually got.
-    CheckNear(SaturatedForwardUnits(-1.0f), -0.40f * SkyrimHT::UNITS_PER_METER,
+    Check(!RuntimeSettings().invert_z, "depth inversion stays after the processor clamp");
+    CheckNear(SaturatedForwardUnits(-1.0f), 0.40f * SkyrimHT::UNITS_PER_METER,
               "forward lean gets the 0.40m budget");
-    CheckNear(SaturatedForwardUnits(1.0f), 0.10f * SkyrimHT::UNITS_PER_METER,
+    CheckNear(SaturatedForwardUnits(1.0f), -0.10f * SkyrimHT::UNITS_PER_METER,
               "backward lean gets the 0.10m budget");
+
+    auto settings = RuntimeSettings();
+    settings.limit_z = 0.12f;
+    settings.limit_z_back = 0.35f;
+    CheckNear(SaturatedForwardUnits(-1.0f, settings), 0.12f * SkyrimHT::UNITS_PER_METER,
+              "forward lean uses the custom forward limit after inversion");
+    CheckNear(SaturatedForwardUnits(1.0f, settings), -0.35f * SkyrimHT::UNITS_PER_METER,
+              "backward lean uses the custom backward limit after inversion");
 }
 
 // The same raw lateral leans through the processor with InvertX on and the old
