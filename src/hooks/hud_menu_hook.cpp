@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "hud_menu_hook.h"
 #include "hooks/camera_hook.h"
+#include "hooks/marker_projection.h"
 #include "core/mod.h"
 #include "core/logger.h"
 #include "core/constants.h"
@@ -166,24 +167,10 @@ ScreenAnchoredPathState g_screenAnchoredPaths[] = {
     },
 };
 
-// Floating quest markers. Ghidra (FUN_140923800 on 1.6.1170) showed the engine
-// attaches up to 48 marker clips named target0..target47 (class
-// "quest target_HUD") under FloatingQuestMarkerInstance, and positions each at
-// the quest target's CLEAN screen projection. Verified at runtime: target0._x/._y
-// holds the real off-centre position and does NOT move with the head (the engine
-// projects with the clean, body-locked camera; player_hook restores it during
-// Update). So we reproject the REAL marker exactly: read its clean stage
-// position, recover the world direction through the clean camera basis, then
-// re-project that direction through the tracked basis and write it back.
-//
-// This is exact for every marker on all axes (yaw/pitch/roll, off-centre) in
-// BOTH yaw modes - no per-axis approximation, no yaw-mode special-casing - and
-// is version-independent (pure GFx member paths, no hardcoded RVAs).
-//
-// Inactive markers sit parked at the origin; we skip those. The engine rewrites
-// each active marker every frame at its clean projection, so the engine-write
-// detector distinguishes "engine refreshed the clean value" from "our reprojected
-// write still stands", preventing us from reprojecting our own output (a spiral).
+// The engine writes target clips relative to HUDMovieBaseInstance, not screen
+// centre. Recover a screen-space ray before applying the tracked camera basis.
+// Remember our writes so a HUD tick without an engine update cannot accumulate
+// another rotation onto the previous result.
 constexpr int kMaxFloatingMarkers = 12;
 
 struct FloatingMarkerPaths {
@@ -216,7 +203,7 @@ bool ReprojectFloatingMarker(
     void* movieView,
     const CameraRootSnapshots& snap,
     const FloatingMarkerPaths& paths,
-    FloatingMarkerState& state) {
+    FloatingMarkerState& state, double originX, double originY) {
     const char* xPath = paths.x;
     const char* yPath = paths.y;
 
@@ -247,29 +234,10 @@ bool ReprojectFloatingMarker(
         return false;
     }
 
-    const double halfStageW = static_cast<double>(g_stageAuthoredWidth)  * 0.5;
-    const double halfStageH = static_cast<double>(g_stageAuthoredHeight) * 0.5;
-
-    const double cleanRight =  (baseX / halfStageW) * snap.frustumRight;
-    const double cleanUp    = -(baseY / halfStageH) * snap.frustumTop;
-
-    // Reconstruct the world direction from the marker's clean stage position,
-    // then re-project through the tracked basis.
-    const double wx = snap.cleanNiCamWorld[0][0] + snap.cleanNiCamWorld[0][1]*cleanUp + snap.cleanNiCamWorld[0][2]*cleanRight;
-    const double wy = snap.cleanNiCamWorld[1][0] + snap.cleanNiCamWorld[1][1]*cleanUp + snap.cleanNiCamWorld[1][2]*cleanRight;
-    const double wz = snap.cleanNiCamWorld[2][0] + snap.cleanNiCamWorld[2][1]*cleanUp + snap.cleanNiCamWorld[2][2]*cleanRight;
-
-    const double trackedFwd   = snap.trackedNiCamWorld[0][0]*wx + snap.trackedNiCamWorld[1][0]*wy + snap.trackedNiCamWorld[2][0]*wz;
-    const double trackedUp    = snap.trackedNiCamWorld[0][1]*wx + snap.trackedNiCamWorld[1][1]*wy + snap.trackedNiCamWorld[2][1]*wz;
-    const double trackedRight = snap.trackedNiCamWorld[0][2]*wx + snap.trackedNiCamWorld[1][2]*wy + snap.trackedNiCamWorld[2][2]*wz;
-
-    if (trackedFwd < 0.01) return false;  // behind tracked camera; leave alone
-
-    const double ndcX = trackedRight / trackedFwd / snap.frustumRight;
-    const double ndcY = -trackedUp   / trackedFwd / snap.frustumTop;
-    const double targetX = ndcX * halfStageW;
-    const double targetY = ndcY * halfStageH;
-
+    double targetX = 0.0;
+    double targetY = 0.0;
+    if (!ProjectFloatingMarker(snap, g_stageAuthoredWidth, g_stageAuthoredHeight,
+                               originX, originY, baseX, baseY, targetX, targetY)) return false;
     if (!CallSetVariableNumber(movieView, xPath, targetX)) return false;
     if (!CallSetVariableNumber(movieView, yPath, targetY)) return false;
     state.lastWrittenX = targetX;
@@ -279,9 +247,14 @@ bool ReprojectFloatingMarker(
 
 void UpdateFloatingMarkerReprojection(void* movieView, const CameraRootSnapshots& snap) {
     if (snap.frustumRight <= 0.0f || snap.frustumTop <= 0.0f) return;
+    double hudX, hudY, containerX, containerY;
+    if (!CallGetVariableNumber(movieView, "HUDMovieBaseInstance._x", hudX)
+        || !CallGetVariableNumber(movieView, "HUDMovieBaseInstance._y", hudY)
+        || !CallGetVariableNumber(movieView, "HUDMovieBaseInstance.FloatingQuestMarkerInstance._x", containerX)
+        || !CallGetVariableNumber(movieView, "HUDMovieBaseInstance.FloatingQuestMarkerInstance._y", containerY)) return;
     const auto& paths = GetFloatingMarkerPaths();
     for (int i = 0; i < kMaxFloatingMarkers; ++i) {
-        ReprojectFloatingMarker(movieView, snap, paths[i], g_floatingMarkers[i]);
+        ReprojectFloatingMarker(movieView, snap, paths[i], g_floatingMarkers[i], hudX + containerX, hudY + containerY);
     }
 }
 

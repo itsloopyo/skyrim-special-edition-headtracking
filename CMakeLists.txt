@@ -129,6 +129,8 @@ if(SKYRIMHT_BUILD_TESTS)
     # config compiles it.
     add_library(skyrimht_inih STATIC extern/ini.c)
 
+    skyrimht_add_test(skyrimht_marker_tests tests/marker_projection_tests.cpp)
+
     set(SKYRIMHT_CONFIG_SOURCES
         src/core/config.cpp
         src/legacy_config/legacy_config.cpp
